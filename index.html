@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Photo Tagger</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f0f11">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .catch(err => console.warn('SW registration failed:', err));
+    }
+  </script>
+</head>
+<body>
+
+<nav>
+  <h1>📷 Photo Tagger</h1>
+  <div class="nav-actions">
+    <span id="auth-badge" class="auth-badge" hidden></span>
+    <button class="btn-secondary" id="btn-nav-gallery">Gallery</button>
+    <button class="btn-secondary" id="btn-login">Login</button>
+    <button class="btn-secondary" id="btn-logout" hidden>Logout</button>
+    <button class="btn-primary" id="btn-open-camera" hidden>+ New Photo</button>
+  </div>
+</nav>
+
+<!-- ── Gallery ── -->
+<div id="view-gallery" class="view">
+  <div class="gallery-toolbar">
+    <input type="text" id="input-search" placeholder="Search part number, printer…">
+    <button class="btn-secondary" id="btn-export-pdf">Export PDF</button>
+  </div>
+  <div id="printer-filter-bar" class="filter-bar"></div>
+  <div id="gallery-empty" hidden>
+    <h2>No parts yet</h2>
+    <p>Tap <strong>+ New Photo</strong> to add your first part.</p>
+  </div>
+  <div class="gallery-grid" id="gallery-grid"></div>
+</div>
+
+<!-- ── Capture ── -->
+<div id="view-capture" class="view" hidden>
+  <div id="capture-choice" class="capture-choice">
+    <button class="btn-primary btn-capture-choice" id="btn-start-camera">📷 Take a Photo</button>
+    <button class="btn-secondary btn-capture-choice" id="btn-use-file">📁 Upload from Device</button>
+    <button class="btn-secondary btn-capture-choice" id="btn-cancel-capture">✕ Cancel</button>
+  </div>
+  <video id="camera-feed" autoplay playsinline muted hidden></video>
+  <div class="capture-actions" id="capture-actions" hidden>
+    <button class="btn-secondary" id="btn-stop-camera">✕ Cancel</button>
+    <button class="btn-primary" id="btn-capture">📸 Capture</button>
+  </div>
+  <input type="file" id="file-input" accept="image/*" hidden>
+</div>
+
+<!-- ── Preview & Burn ── -->
+<div id="view-preview" class="view" hidden>
+  <img id="preview-img" src="" alt="Preview">
+  <div class="preview-form">
+
+    <div>
+      <label for="input-part-number">Part Number</label>
+      <input type="text" id="input-part-number" placeholder="e.g. PN-2024-001"
+             autocomplete="off" spellcheck="false" list="part-number-list">
+      <datalist id="part-number-list"></datalist>
+    </div>
+
+    <!-- Shown when part number matches an existing part -->
+    <div id="preview-existing-info" class="existing-part-banner" hidden>
+      Adding new photo to existing part: <strong id="preview-existing-name"></strong>
+    </div>
+
+    <!-- Shown only for new parts -->
+    <div id="new-part-fields">
+      <div>
+        <label>Printer(s)</label>
+        <div id="preview-printers" class="printer-checkboxes"></div>
+      </div>
+      <div>
+        <label for="input-description">Description (optional)</label>
+        <textarea id="input-description" rows="2" placeholder="Notes about this part…"></textarea>
+      </div>
+    </div>
+
+    <div>
+      <label for="preview-machine-label">Machine Label (optional — burned onto photo)</label>
+      <input type="text" id="preview-machine-label" placeholder="e.g. Installed in PeriOne Unit 3"
+             autocomplete="off" spellcheck="false">
+    </div>
+
+    <div>
+      <label for="select-position">Text Position</label>
+      <select id="select-position">
+        <option value="bottom-left">Bottom Left</option>
+        <option value="bottom-right">Bottom Right</option>
+        <option value="top-left">Top Left</option>
+        <option value="center">Center</option>
+      </select>
+    </div>
+
+  </div>
+  <div class="preview-actions">
+    <button class="btn-secondary" id="btn-retake">Retake</button>
+    <button class="btn-secondary" id="btn-edit-photo">✏️ Edit Photo</button>
+    <button class="btn-secondary" id="btn-cancel-preview">Cancel</button>
+    <button class="btn-primary" id="btn-burn-save">Burn & Save</button>
+  </div>
+</div>
+
+<!-- ── Part Detail ── -->
+<div id="view-part-detail" class="view" hidden>
+  <div class="part-detail-header">
+    <button class="btn-secondary" id="btn-back-gallery">← Back</button>
+    <div class="part-detail-info">
+      <h2 id="detail-part-number"></h2>
+      <div id="detail-printers" class="printer-list"></div>
+      <p id="detail-description" class="desc"></p>
+    </div>
+    <div class="part-detail-actions">
+      <button class="btn-primary" id="btn-detail-add-photo">+ Add Photo</button>
+      <button class="btn-secondary" id="btn-detail-edit">Edit Part</button>
+      <button class="btn-secondary" id="btn-detail-pdf">Export PDF</button>
+      <button class="btn-sm danger" id="btn-detail-delete">Delete Part</button>
+    </div>
+  </div>
+  <div id="detail-photos-grid" class="detail-photos-grid"></div>
+</div>
+
+<!-- ── Lightbox ── -->
+<div id="modal-lightbox" class="lightbox-backdrop" hidden>
+  <button id="btn-lightbox-close" class="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="Full size">
+</div>
+
+<!-- ── Edit Part Modal ── -->
+<div id="modal-edit-part" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h2>Edit Part</h2>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Part Number</label>
+      <input type="text" id="edit-part-number" readonly style="opacity:.6;cursor:default;">
+    </div>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:6px;">Printer(s)</label>
+      <div id="edit-part-printers" class="printer-checkboxes"></div>
+    </div>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:6px;">Description</label>
+      <textarea id="edit-part-description" rows="3" placeholder="Notes about this part…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-edit-part-cancel">Cancel</button>
+      <button class="btn-primary" id="btn-edit-part-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Photo Label Modal ── -->
+<div id="modal-edit-photo-label" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h2>Edit Photo Label</h2>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Machine Label (burned onto photo)</label>
+      <input type="text" id="edit-photo-label-input" placeholder="e.g. Installed in PeriOne Unit 3" autocomplete="off" spellcheck="false">
+    </div>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:6px;">Text Position</label>
+      <select id="edit-photo-position-select">
+        <option value="bottom-left">Bottom Left</option>
+        <option value="bottom-right">Bottom Right</option>
+        <option value="top-left">Top Left</option>
+        <option value="center">Center</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-edit-photo-label-cancel">Cancel</button>
+      <button class="btn-primary" id="btn-edit-photo-label-save">Burn &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Login Modal ── -->
+<div id="modal-login" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h2>🔐 Team Access</h2>
+    <p class="login-subtitle">Sign in to add or edit parts. Anyone can browse and export PDFs without signing in.</p>
+
+    <button class="btn-google" id="btn-google-signin">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Sign in with Google
+    </button>
+
+    <div class="login-divider"><span>First time here?</span></div>
+
+    <p class="login-hint">Enter the company invite key to register your Google account for full access.</p>
+    <input type="text" id="input-invite-key" placeholder="Company invite key" autocomplete="off" spellcheck="false">
+    <button class="btn-primary" id="btn-register-google">Register &amp; Sign in with Google</button>
+
+    <button class="btn-secondary" id="btn-login-cancel">Cancel</button>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

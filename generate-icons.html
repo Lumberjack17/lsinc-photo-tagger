@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!-- Open this file in a browser, then right-click each canvas and "Save image as" icon-192.png / icon-512.png -->
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+<p>Right-click each image below and save as <strong>icon-192.png</strong> and <strong>icon-512.png</strong></p>
+<script>
+function makeIcon(size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#0f0f11';
+  ctx.fillRect(0, 0, size, size);
+
+  // Rounded rect background
+  const pad = size * 0.1;
+  ctx.fillStyle = '#1a1a1f';
+  ctx.beginPath();
+  ctx.roundRect(pad, pad, size - pad*2, size - pad*2, size * 0.18);
+  ctx.fill();
+
+  // Camera body
+  const cx = size / 2, cy = size / 2;
+  const cw = size * 0.52, ch = size * 0.38;
+  ctx.fillStyle = '#4f8ef7';
+  ctx.beginPath();
+  ctx.roundRect(cx - cw/2, cy - ch/2 + size*0.04, cw, ch, size * 0.06);
+  ctx.fill();
+
+  // Lens
+  ctx.fillStyle = '#0f0f11';
+  ctx.beginPath();
+  ctx.arc(cx, cy + size*0.04, size * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#6ba3ff';
+  ctx.beginPath();
+  ctx.arc(cx, cy + size*0.04, size * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Viewfinder bump
+  ctx.fillStyle = '#4f8ef7';
+  ctx.beginPath();
+  ctx.roundRect(cx - size*0.1, cy - ch/2 - size*0.04, size * 0.2, size * 0.1, size*0.04);
+  ctx.fill();
+
+  const img = document.createElement('img');
+  img.src = canvas.toDataURL('image/png');
+  img.style.display = 'block';
+  img.style.margin = '10px';
+  img.title = `icon-${size}.png`;
+  const p = document.createElement('p');
+  p.textContent = `icon-${size}.png — right-click → Save image as`;
+  document.body.appendChild(p);
+  document.body.appendChild(img);
+}
+makeIcon(192);
+makeIcon(512);
+</script>
+</body>
+</html>
