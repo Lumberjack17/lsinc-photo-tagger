@@ -24,6 +24,7 @@
   <h1>📷 Photo Tagger</h1>
   <div class="nav-actions">
     <span id="auth-badge" class="auth-badge" hidden></span>
+    <button class="btn-secondary" id="btn-settings" title="Scanner & catalog settings">⚙</button>
     <button class="btn-secondary" id="btn-nav-gallery">Gallery</button>
     <button class="btn-secondary" id="btn-login">Login</button>
     <button class="btn-secondary" id="btn-logout" hidden>Logout</button>
@@ -183,6 +184,41 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="btn-edit-photo-label-cancel">Cancel</button>
       <button class="btn-primary" id="btn-edit-photo-label-save">Burn &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scanner / Catalog Settings Modal ── -->
+<div id="modal-settings" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h2>⚙ Scanner Settings</h2>
+
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Catalog (part number → description)</label>
+      <p id="settings-cat-status" style="font-size:.82rem;color:var(--muted);margin-bottom:6px;">No catalog loaded.</p>
+      <input type="text" id="settings-cat-url" placeholder="Published sheet CSV URL" autocomplete="off" spellcheck="false">
+      <div class="modal-actions" style="margin-top:8px;">
+        <button class="btn-secondary" id="settings-cat-import">Import file…</button>
+        <button class="btn-primary" id="settings-cat-refresh">Save &amp; Refresh</button>
+      </div>
+      <input type="file" id="settings-cat-file" accept=".csv,.xlsx,.xls" hidden>
+    </div>
+
+    <div style="margin-top:14px;">
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Claude Vision (fallback for parts not in the catalog)</label>
+      <input type="password" id="settings-vis-key" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false">
+      <select id="settings-vis-model" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:9px 11px;color:var(--text);"></select>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85rem;color:var(--text);text-transform:none;">
+        <input type="checkbox" id="settings-vis-enabled"> Use Claude Vision when a part isn't in the catalog
+      </label>
+      <p style="font-size:.75rem;color:#e0b452;margin-top:8px;">⚠ The key is stored on this device only. For the shared app, move it to a server. Never commit it.</p>
+      <p id="settings-cost" style="font-size:.82rem;color:var(--muted);margin-top:8px;"></p>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn-sm danger" id="settings-cost-reset">Reset cost</button>
+      <button class="btn-secondary" id="settings-cancel">Close</button>
+      <button class="btn-primary" id="settings-save">Save</button>
     </div>
   </div>
 </div>

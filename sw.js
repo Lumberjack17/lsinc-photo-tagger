@@ -1,4 +1,4 @@
-const CACHE = 'photo-tagger-v7';
+const CACHE = 'photo-tagger-v8';
 
 // App shell — all local assets that make the UI work offline
 const SHELL = [
@@ -10,6 +10,8 @@ const SHELL = [
   '/canvas.js',
   '/editor.js',
   '/scanner.js',
+  '/catalog.js',
+  '/vision.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
@@ -38,6 +40,9 @@ self.addEventListener('activate', e => {
 // ── Fetch strategy ────────────────────────────────────────────────────────
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Non-GET (e.g. Claude Vision POST) — straight to network, never cached.
+  if (e.request.method !== 'GET') return;
 
   // Supabase API + Storage — network first, no offline cache (data needs to be live)
   if (url.hostname.includes('supabase.co')) {

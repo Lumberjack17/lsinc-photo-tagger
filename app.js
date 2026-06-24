@@ -3,7 +3,9 @@ import {
   signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
-import { scanBarcode, readTextFromImage, parseLabel } from './scanner.js';
+import { scanBarcode } from './scanner.js';
+import * as catalog from './catalog.js';
+import * as vision from './vision.js';
 
 const PRINTERS = ['PeriOne', 'PeriQ360', 'Perivallo360m', 'PeriH'];
 
@@ -16,6 +18,7 @@ let activePrinterFilter = null;
 let isAuthorized = false;
 let currentEditingPhoto = null;
 let scannedData = null; // { partNumber, description } captured from a label scan; pre-fills the preview form
+let scanLoop = false;   // when true, saving a photo jumps straight back to scanning the next part
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function updateAuthUI() {
@@ -140,32 +143,47 @@ function stopCamera() {
 document.getElementById('btn-open-camera').addEventListener('click', () => {
   targetPartId = null;
   scannedData = null;
+  scanLoop = false;
   showCaptureView();
 });
 
 document.getElementById('btn-start-camera').addEventListener('click', () => startCameraFeed());
 
-// Scan a label's barcode (and optionally its text), then go straight to taking the photo.
-document.getElementById('btn-scan-label').addEventListener('click', async () => {
+// Scan a label → look up the part number → go straight to taking the photo with fields pre-filled.
+async function startScanFlow() {
   const result = await scanBarcode();
-  if (!result) return; // user cancelled
+  if (!result) { // user cancelled — end the loop and go back
+    scanLoop = false;
+    showView(currentPart ? 'view-part-detail' : 'view-gallery');
+    return;
+  }
 
   scannedData = { partNumber: result.code, description: '' };
 
-  // Best-effort OCR for the description lines. Never blocks the photo step — failures are silent.
-  if (result.frame) {
+  // 1. Try the Excel/CSV catalog first (exact, free, offline).
+  const hit = catalog.lookupPart(result.code);
+  if (hit) {
+    scannedData.description = hit.description || '';
+  } else if (vision.getVisionConfig().apiKey) {
+    // 2. Not in the catalog → ask Claude Vision to read the description. Best-effort; never blocks.
     try {
-      const raw = await readTextFromImage(result.frame);
-      scannedData.description = parseLabel(raw, result.code);
-    } catch (e) { /* OCR optional — ignore and let the user type it */ }
+      const res = await vision.extractLabel(result.frame, result.code);
+      scannedData.description = res.description || '';
+    } catch (e) { /* user can still type it in the preview */ }
   }
 
   startCameraFeed();
+}
+
+document.getElementById('btn-scan-label').addEventListener('click', () => {
+  scanLoop = true;
+  startScanFlow();
 });
 
 document.getElementById('btn-cancel-capture').addEventListener('click', () => {
   targetPartId = null;
   scannedData = null;
+  scanLoop = false;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -222,6 +240,7 @@ document.getElementById('btn-cancel-preview').addEventListener('click', () => {
   capturedImageDataUrl = null;
   targetPartId = null;
   scannedData = null;
+  scanLoop = false;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -323,6 +342,16 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
 
     if (currentPart) {
       currentPart = allParts.find(p => p.id === currentPart.id);
+    }
+
+    if (scanLoop) {
+      // Continuous mode: saved one part, immediately scan the next.
+      btn.textContent = 'Burn & Save'; btn.disabled = false;
+      startScanFlow();
+      return;
+    }
+
+    if (currentPart) {
       renderPartDetail();
       showView('view-part-detail');
     } else {
@@ -454,6 +483,7 @@ document.getElementById('btn-back-gallery').addEventListener('click', () => {
 document.getElementById('btn-detail-add-photo').addEventListener('click', () => {
   targetPartId = currentPart.id;
   scannedData = null;
+  scanLoop = false;
   showCaptureView();
 });
 
@@ -775,8 +805,77 @@ document.querySelector('nav h1').addEventListener('click', () => {
 });
 
 
+// ── Settings (catalog + Claude Vision) ───────────────────────────────────────
+function renderSettingsStatus() {
+  const meta = catalog.getMeta();
+  const status = document.getElementById('settings-cat-status');
+  if (meta) {
+    status.textContent = `${meta.count} parts loaded · "${meta.columns.part}" → "${meta.columns.description}" · updated ${new Date(meta.updatedAt).toLocaleString()}`;
+  } else {
+    status.textContent = 'No catalog loaded.';
+  }
+  const c = vision.getCostSummary();
+  document.getElementById('settings-cost').textContent =
+    `Claude Vision: ${c.scans} scans · $${c.totalUSD.toFixed(4)} total`;
+}
+
+function openSettings() {
+  const modelSel = document.getElementById('settings-vis-model');
+  if (!modelSel.options.length) {
+    vision.MODELS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = vision.PRICING[m].label;
+      modelSel.appendChild(opt);
+    });
+  }
+  const cfg = vision.getVisionConfig();
+  document.getElementById('settings-cat-url').value = catalog.getCatalogUrl();
+  document.getElementById('settings-vis-key').value = cfg.apiKey;
+  modelSel.value = cfg.model;
+  document.getElementById('settings-vis-enabled').checked = cfg.enabled;
+  renderSettingsStatus();
+  document.getElementById('modal-settings').hidden = false;
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('settings-cancel').addEventListener('click', () => {
+  document.getElementById('modal-settings').hidden = true;
+});
+document.getElementById('settings-save').addEventListener('click', () => {
+  catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
+  vision.setVisionConfig({
+    apiKey: document.getElementById('settings-vis-key').value,
+    model: document.getElementById('settings-vis-model').value,
+    enabled: document.getElementById('settings-vis-enabled').checked,
+  });
+  document.getElementById('modal-settings').hidden = true;
+});
+document.getElementById('settings-cat-refresh').addEventListener('click', async () => {
+  catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
+  const status = document.getElementById('settings-cat-status');
+  status.textContent = 'Fetching…';
+  try { await catalog.refreshFromUrl(); renderSettingsStatus(); }
+  catch (e) { status.textContent = 'Error: ' + e.message; }
+});
+document.getElementById('settings-cat-import').addEventListener('click', () =>
+  document.getElementById('settings-cat-file').click());
+document.getElementById('settings-cat-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const status = document.getElementById('settings-cat-status');
+  status.textContent = 'Parsing ' + file.name + '…';
+  try { await catalog.importFile(file); renderSettingsStatus(); }
+  catch (err) { status.textContent = 'Error: ' + err.message; }
+  e.target.value = '';
+});
+document.getElementById('settings-cost-reset').addEventListener('click', () => {
+  vision.resetCost(); renderSettingsStatus();
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 (async () => {
+  // Load the cached part-number catalog into memory for instant lookups.
+  catalog.loadCached();
+
   // Detect OAuth errors returned in URL hash
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   if (hashParams.get('error')) {

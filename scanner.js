@@ -1,18 +1,19 @@
-// scanner.js — Barcode scanner + optional text (OCR) reader.
+// scanner.js — Barcode scanner.
 //
 // Works on BOTH platforms:
 //   • Android / Chrome / Edge → uses the browser's built-in BarcodeDetector (fast, no download).
 //   • iPhone Safari / Firefox / older browsers → falls back to the ZXing library (loaded on demand).
 //
+// The barcode is read from the WHOLE camera frame — it does not need to be centered. The on-screen
+// box is just an aiming guide; a barcode anywhere in view will be picked up.
+//
 // Exports:
-//   scanBarcode()            → opens a fullscreen camera scanner. Resolves { code, frame } or null (cancelled).
-//                              `frame` is a JPEG data URL of the moment the code was read (used for OCR).
-//   readTextFromImage(url)   → runs OCR on an image data URL, resolves the raw recognized text (string).
-//   parseLabel(text, code)   → turns raw OCR text + the known barcode value into a clean description string.
+//   scanBarcode() → opens a fullscreen camera scanner. Resolves { code, frame } or null (cancelled).
+//                   `frame` is a full-resolution JPEG data URL of the moment the code was read
+//                   (used as the image for Claude Vision when a part isn't in the catalog).
 
-// Pinned CDN builds. ZXing is small; Tesseract (OCR) is large, so it only loads if you actually use it.
+// Pinned CDN build of the ZXing barcode library (iPhone / Firefox fallback path).
 const ZXING_CDN = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
-const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
 
 // Barcode symbologies we try to read. Your label is Code 128, but we accept the common ones too.
 const FORMATS = ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf', 'codabar', 'qr_code', 'data_matrix'];
@@ -46,7 +47,7 @@ export function scanBarcode() {
     overlay.innerHTML = `
       <video class="scanner-video" autoplay playsinline muted></video>
       <div class="scanner-frame"><div class="scanner-laser"></div></div>
-      <div class="scanner-hint">Center the barcode in the box</div>
+      <div class="scanner-hint">Aim at the label — the barcode can be anywhere in view</div>
       <button class="scanner-cancel" type="button">✕ Cancel</button>`;
     document.body.appendChild(overlay);
 
@@ -113,23 +114,4 @@ export function scanBarcode() {
       }
     })();
   });
-}
-
-// ── OCR: read the printed text off a captured frame ──────────────────────────
-export async function readTextFromImage(dataUrl) {
-  const Tesseract = await loadScript(TESSERACT_CDN, 'Tesseract');
-  const { data } = await Tesseract.recognize(dataUrl, 'eng');
-  return (data && data.text) ? data.text : '';
-}
-
-// ── Turn raw OCR text into a clean description, given the known barcode value ──
-export function parseLabel(rawText, code) {
-  return rawText
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean)
-    .filter(l => l !== code)                       // drop the line that is just the part number
-    .filter(l => !/^[\d\s]{4,}$/.test(l))          // drop pure-number lines (the barcode digits / quantities)
-    .filter(l => l.replace(/[^a-z0-9]/gi, '').length >= 2)
-    .join('\n');
 }
