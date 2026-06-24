@@ -18,14 +18,34 @@ const LS_KEY = 'vision_api_key';
 const LS_MODEL = 'vision_model';
 const LS_ENABLED = 'vision_enabled';
 const LS_COST = 'vision_cost';
+const LS_PRICES = 'vision_prices'; // user overrides: { model: { in, out } }
 
-// Published $/million-token rates (input includes image tokens).
+// Default published $/million-token rates (input includes image tokens). These can change
+// over time, so they're editable — see getPrice/setPrice below.
 export const PRICING = {
   'claude-opus-4-8':   { in: 5.00, out: 25.00, label: 'Opus 4.8 (most capable)' },
   'claude-sonnet-4-6': { in: 3.00, out: 15.00, label: 'Sonnet 4.6 (balanced)' },
   'claude-haiku-4-5':  { in: 1.00, out: 5.00,  label: 'Haiku 4.5 (cheapest, fast)' },
 };
 export const MODELS = Object.keys(PRICING);
+
+// Effective price for a model: a saved override if present, otherwise the default above.
+export function getPrice(model) {
+  let overrides = {};
+  try { overrides = JSON.parse(localStorage.getItem(LS_PRICES)) || {}; } catch (e) {}
+  const def = PRICING[model] || PRICING['claude-opus-4-8'];
+  const o = overrides[model] || {};
+  return {
+    in: Number.isFinite(o.in) ? o.in : def.in,
+    out: Number.isFinite(o.out) ? o.out : def.out,
+  };
+}
+export function setPrice(model, inUSD, outUSD) {
+  let overrides = {};
+  try { overrides = JSON.parse(localStorage.getItem(LS_PRICES)) || {}; } catch (e) {}
+  overrides[model] = { in: parseFloat(inUSD), out: parseFloat(outUSD) };
+  localStorage.setItem(LS_PRICES, JSON.stringify(overrides));
+}
 
 // ── Config ───────────────────────────────────────────────────────────────────
 export function getVisionConfig() {
@@ -54,7 +74,7 @@ function blankCost() { return { totalUSD: 0, scans: 0, inputTokens: 0, outputTok
 export function resetCost() { localStorage.removeItem(LS_COST); }
 
 function recordCost(usage, model) {
-  const price = PRICING[model] || PRICING['claude-opus-4-8'];
+  const price = getPrice(model);
   const cost = (usage.input_tokens / 1e6) * price.in + (usage.output_tokens / 1e6) * price.out;
   const s = getCostSummary();
   s.totalUSD += cost;

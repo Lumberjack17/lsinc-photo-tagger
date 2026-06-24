@@ -1,4 +1,4 @@
-const CACHE = 'photo-tagger-v8';
+const CACHE = 'photo-tagger-v9';
 
 // App shell — all local assets that make the UI work offline
 const SHELL = [

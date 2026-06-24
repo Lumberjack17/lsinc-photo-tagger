@@ -70,6 +70,10 @@
       <input type="password" id="vis-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
       <label for="vis-model">Model</label>
       <select id="vis-model"></select>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><label for="vis-price-in">Input $ / 1M tokens</label><input type="number" id="vis-price-in" step="0.01" min="0"></div>
+        <div style="flex:1;"><label for="vis-price-out">Output $ / 1M tokens</label><input type="number" id="vis-price-out" step="0.01" min="0"></div>
+      </div>
       <div class="row">
         <button class="btn-primary" id="btn-vis-save">Save</button>
       </div>
@@ -116,8 +120,16 @@
       $('vis-model').appendChild(opt);
     });
     $('vis-model').value = cfg.model;
+    fillPrices(cfg.model);
+    $('vis-model').addEventListener('change', () => fillPrices($('vis-model').value));
     $('btn-vision').disabled = !cfg.apiKey;
     renderCost();
+
+    function fillPrices(model) {
+      const p = vision.getPrice(model);
+      $('vis-price-in').value = p.in;
+      $('vis-price-out').value = p.out;
+    }
 
     function renderCatalogStatus() {
       const meta = catalog.getMeta();
@@ -212,7 +224,9 @@
 
     // ── Vision controls ──
     $('btn-vis-save').addEventListener('click', () => {
-      vision.setVisionConfig({ apiKey: $('vis-key').value, model: $('vis-model').value, enabled: !!$('vis-key').value });
+      const model = $('vis-model').value;
+      vision.setVisionConfig({ apiKey: $('vis-key').value, model, enabled: !!$('vis-key').value });
+      vision.setPrice(model, $('vis-price-in').value, $('vis-price-out').value);
       $('btn-vision').disabled = !$('vis-key').value;
       $('scan-status').className = 'status ok';
       $('scan-status').textContent = 'Saved Claude settings.';

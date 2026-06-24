@@ -819,6 +819,12 @@ function renderSettingsStatus() {
     `Claude Vision: ${c.scans} scans · $${c.totalUSD.toFixed(4)} total`;
 }
 
+function fillPrices(model) {
+  const p = vision.getPrice(model);
+  document.getElementById('settings-price-in').value = p.in;
+  document.getElementById('settings-price-out').value = p.out;
+}
+
 function openSettings() {
   const modelSel = document.getElementById('settings-vis-model');
   if (!modelSel.options.length) {
@@ -827,11 +833,14 @@ function openSettings() {
       opt.value = m; opt.textContent = vision.PRICING[m].label;
       modelSel.appendChild(opt);
     });
+    // Show the saved rate for whichever model is selected.
+    modelSel.addEventListener('change', () => fillPrices(modelSel.value));
   }
   const cfg = vision.getVisionConfig();
   document.getElementById('settings-cat-url').value = catalog.getCatalogUrl();
   document.getElementById('settings-vis-key').value = cfg.apiKey;
   modelSel.value = cfg.model;
+  fillPrices(cfg.model);
   document.getElementById('settings-vis-enabled').checked = cfg.enabled;
   renderSettingsStatus();
   document.getElementById('modal-settings').hidden = false;
@@ -842,12 +851,16 @@ document.getElementById('settings-cancel').addEventListener('click', () => {
   document.getElementById('modal-settings').hidden = true;
 });
 document.getElementById('settings-save').addEventListener('click', () => {
+  const model = document.getElementById('settings-vis-model').value;
   catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
   vision.setVisionConfig({
     apiKey: document.getElementById('settings-vis-key').value,
-    model: document.getElementById('settings-vis-model').value,
+    model,
     enabled: document.getElementById('settings-vis-enabled').checked,
   });
+  vision.setPrice(model,
+    document.getElementById('settings-price-in').value,
+    document.getElementById('settings-price-out').value);
   document.getElementById('modal-settings').hidden = true;
 });
 document.getElementById('settings-cat-refresh').addEventListener('click', async () => {

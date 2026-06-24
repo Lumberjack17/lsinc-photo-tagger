@@ -193,6 +193,8 @@
   <div class="modal">
     <h2>⚙ Scanner Settings</h2>
 
+    <p style="margin-bottom:12px;"><a href="scanner-test.html" style="color:var(--accent);font-size:.9rem;">🔍 Open scanner test page (no login needed) →</a></p>
+
     <div>
       <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Catalog (part number → description)</label>
       <p id="settings-cat-status" style="font-size:.82rem;color:var(--muted);margin-bottom:6px;">No catalog loaded.</p>
@@ -208,6 +210,16 @@
       <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Claude Vision (fallback for parts not in the catalog)</label>
       <input type="password" id="settings-vis-key" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false">
       <select id="settings-vis-model" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:9px 11px;color:var(--text);"></select>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <div style="flex:1;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Input $ / 1M tokens</label>
+          <input type="number" id="settings-price-in" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:8px 10px;color:var(--text);">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Output $ / 1M tokens</label>
+          <input type="number" id="settings-price-out" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:8px 10px;color:var(--text);">
+        </div>
+      </div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85rem;color:var(--text);text-transform:none;">
         <input type="checkbox" id="settings-vis-enabled"> Use Claude Vision when a part isn't in the catalog
       </label>
