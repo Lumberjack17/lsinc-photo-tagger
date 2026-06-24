@@ -1,4 +1,4 @@
-const CACHE = 'photo-tagger-v6';
+const CACHE = 'photo-tagger-v7';
 
 // App shell — all local assets that make the UI work offline
 const SHELL = [
@@ -9,11 +9,13 @@ const SHELL = [
   '/supabase.js',
   '/canvas.js',
   '/editor.js',
+  '/scanner.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
+  'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js',
 ];
 
 // ── Install: cache the app shell ──────────────────────────────────────────

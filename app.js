@@ -3,6 +3,7 @@ import {
   signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
+import { scanBarcode, readTextFromImage, parseLabel } from './scanner.js';
 
 const PRINTERS = ['PeriOne', 'PeriQ360', 'Perivallo360m', 'PeriH'];
 
@@ -14,6 +15,7 @@ let targetPartId = null;
 let activePrinterFilter = null;
 let isAuthorized = false;
 let currentEditingPhoto = null;
+let scannedData = null; // { partNumber, description } captured from a label scan; pre-fills the preview form
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function updateAuthUI() {
@@ -137,13 +139,33 @@ function stopCamera() {
 
 document.getElementById('btn-open-camera').addEventListener('click', () => {
   targetPartId = null;
+  scannedData = null;
   showCaptureView();
 });
 
 document.getElementById('btn-start-camera').addEventListener('click', () => startCameraFeed());
 
+// Scan a label's barcode (and optionally its text), then go straight to taking the photo.
+document.getElementById('btn-scan-label').addEventListener('click', async () => {
+  const result = await scanBarcode();
+  if (!result) return; // user cancelled
+
+  scannedData = { partNumber: result.code, description: '' };
+
+  // Best-effort OCR for the description lines. Never blocks the photo step — failures are silent.
+  if (result.frame) {
+    try {
+      const raw = await readTextFromImage(result.frame);
+      scannedData.description = parseLabel(raw, result.code);
+    } catch (e) { /* OCR optional — ignore and let the user type it */ }
+  }
+
+  startCameraFeed();
+});
+
 document.getElementById('btn-cancel-capture').addEventListener('click', () => {
   targetPartId = null;
+  scannedData = null;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -199,6 +221,7 @@ document.getElementById('btn-edit-photo').addEventListener('click', () => {
 document.getElementById('btn-cancel-preview').addEventListener('click', () => {
   capturedImageDataUrl = null;
   targetPartId = null;
+  scannedData = null;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -231,6 +254,16 @@ function openPreview() {
     document.getElementById('preview-existing-info').hidden = true;
     renderPrinterCheckboxes('preview-printers');
     document.getElementById('input-description').value = '';
+  }
+
+  // Pre-fill from a label scan (kept across Retake until the capture ends).
+  if (scannedData && !targetPartId) {
+    const input = document.getElementById('input-part-number');
+    input.value = scannedData.partNumber;
+    input.dispatchEvent(new Event('input', { bubbles: true })); // runs the existing part-number lookup / auto-fill
+    if (!targetPartId && scannedData.description) {
+      document.getElementById('input-description').value = scannedData.description;
+    }
   }
 
   showView('view-preview');
@@ -284,6 +317,7 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
 
     capturedImageDataUrl = null;
     targetPartId = null;
+    scannedData = null;
 
     await loadGallery();
 
@@ -419,6 +453,7 @@ document.getElementById('btn-back-gallery').addEventListener('click', () => {
 
 document.getElementById('btn-detail-add-photo').addEventListener('click', () => {
   targetPartId = currentPart.id;
+  scannedData = null;
   showCaptureView();
 });
 

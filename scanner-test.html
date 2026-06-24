@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Scanner Test</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .test-wrap { max-width: 600px; margin: 0 auto; padding: 24px 20px; }
+    .test-wrap h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 6px; }
+    .test-wrap p.sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+    .test-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+    .result-card { background: var(--surface); border: 1px solid #2a2a35; border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+    .result-card label { display: block; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+    .result-card .value { font-size: 1.4rem; font-weight: 700; word-break: break-all; }
+    .result-card pre { white-space: pre-wrap; font-size: .85rem; color: var(--text); margin: 0; }
+    .badge-env { display: inline-block; font-size: .75rem; padding: 3px 10px; border-radius: 20px; background: var(--surface2); border: 1px solid #333; color: var(--muted); margin-bottom: 20px; }
+    .muted { color: var(--muted); font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <div class="test-wrap">
+    <h1>🔍 Scanner Test Harness</h1>
+    <p class="sub">Standalone — no login required. Point your phone at an inventory label to check that scanning works before merging.</p>
+    <div class="badge-env" id="env-badge">Detecting engine…</div>
+
+    <div class="test-row">
+      <button class="btn-primary" id="btn-scan">📷 Scan Barcode</button>
+      <button class="btn-secondary" id="btn-scan-ocr">📷 Scan + Read Text (OCR)</button>
+    </div>
+
+    <div class="result-card">
+      <label>Barcode (→ Part Number)</label>
+      <div class="value" id="out-code">—</div>
+    </div>
+
+    <div class="result-card" id="card-desc" hidden>
+      <label>Parsed Description</label>
+      <pre id="out-desc">—</pre>
+    </div>
+
+    <div class="result-card" id="card-raw" hidden>
+      <label>Raw OCR Text (for debugging)</label>
+      <pre id="out-raw">—</pre>
+    </div>
+
+    <p class="muted" id="status"></p>
+  </div>
+
+  <script type="module">
+    import { scanBarcode, readTextFromImage, parseLabel } from './scanner.js';
+
+    document.getElementById('env-badge').textContent =
+      ('BarcodeDetector' in window)
+        ? 'Engine: native BarcodeDetector (fast path)'
+        : 'Engine: ZXing fallback (iPhone / Firefox path)';
+
+    const status = document.getElementById('status');
+
+    async function run(withOcr) {
+      status.textContent = 'Opening camera…';
+      const result = await scanBarcode();
+      if (!result) { status.textContent = 'Cancelled.'; return; }
+
+      document.getElementById('out-code').textContent = result.code;
+      status.textContent = 'Barcode read ✓';
+
+      if (!withOcr) return;
+
+      status.textContent = 'Reading text (downloading OCR engine the first time, ~10–20s)…';
+      document.getElementById('card-raw').hidden = false;
+      document.getElementById('card-desc').hidden = false;
+      try {
+        const raw = await readTextFromImage(result.frame);
+        document.getElementById('out-raw').textContent = raw || '(nothing recognized)';
+        document.getElementById('out-desc').textContent = parseLabel(raw, result.code) || '(nothing usable)';
+        status.textContent = 'Done ✓';
+      } catch (e) {
+        status.textContent = 'OCR failed: ' + e.message;
+      }
+    }
+
+    document.getElementById('btn-scan').addEventListener('click', () => run(false));
+    document.getElementById('btn-scan-ocr').addEventListener('click', () => run(true));
+  </script>
+</body>
+</html>
