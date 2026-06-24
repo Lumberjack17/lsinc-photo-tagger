@@ -1,6 +1,6 @@
 import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
-  signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
+  reorderPhotos, signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
 
@@ -401,12 +401,20 @@ function renderPartDetail() {
         <div class="card-img-overlay">🔍 Preview</div>
       </div>
       ${photo.machine_label ? `<div class="photo-machine-label">${escHtml(photo.machine_label)}</div>` : ''}
-      ${isAuthorized ? `<div class="photo-card-actions"><button class="btn-sm btn-edit-existing-photo" data-id="${photo.id}">Edit</button><button class="btn-sm btn-edit-photo-label" data-id="${photo.id}">Label</button><button class="btn-sm danger btn-delete-photo" data-id="${photo.id}">Delete</button></div>` : ''}`;
+      ${isAuthorized ? `<div class="photo-card-actions">
+        <button class="btn-sm btn-photo-up" data-id="${photo.id}" title="Move left">◀</button>
+        <button class="btn-sm btn-photo-down" data-id="${photo.id}" title="Move right">▶</button>
+        <button class="btn-sm btn-edit-existing-photo" data-id="${photo.id}">Edit</button>
+        <button class="btn-sm btn-edit-photo-label" data-id="${photo.id}">Label</button>
+        <button class="btn-sm danger btn-delete-photo" data-id="${photo.id}">Delete</button>
+      </div>` : ''}`;
     card.querySelector('.photo-card-img-wrap').addEventListener('click', () => openLightbox(photo.image_url));
     if (isAuthorized) {
       card.querySelector('.btn-delete-photo').addEventListener('click', () => confirmDeletePhoto(photo.id));
       card.querySelector('.btn-edit-existing-photo').addEventListener('click', () => editExistingPhoto(photo));
       card.querySelector('.btn-edit-photo-label').addEventListener('click', () => openEditPhotoLabel(photo));
+      card.querySelector('.btn-photo-up').addEventListener('click', () => movePhoto(photo.id, -1));
+      card.querySelector('.btn-photo-down').addEventListener('click', () => movePhoto(photo.id, 1));
     }
     grid.appendChild(card);
   });
@@ -511,6 +519,28 @@ async function editExistingPhoto(photo) {
     },
     onCancel: () => {},
   });
+}
+
+async function movePhoto(photoId, direction) {
+  const photos = currentPart.photos;
+  const idx = photos.findIndex(p => p.id === photoId);
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= photos.length) return;
+
+  // Swap in local state for instant re-render
+  [photos[idx], photos[newIdx]] = [photos[newIdx], photos[idx]];
+  renderPartDetail();
+
+  // Persist new order to DB
+  try {
+    await reorderPhotos(photos.map(p => p.id));
+    // Refresh gallery so cover image updates too
+    await loadGallery();
+    currentPart = allParts.find(p => p.id === currentPart.id);
+    renderPartDetail();
+  } catch (err) {
+    alert('Reorder failed: ' + err.message);
+  }
 }
 
 function openEditPhotoLabel(photo) {

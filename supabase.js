@@ -38,7 +38,7 @@ async function uploadImage(dataUrl, path) {
 export async function getAllParts() {
   const [{ data: parts, error: pe }, { data: photos, error: phe }] = await Promise.all([
     supabase.from('parts').select('*').order('created_at', { ascending: false }),
-    supabase.from('part_photos').select('*').order('created_at', { ascending: true }),
+    supabase.from('part_photos').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
   ]);
   if (pe) throw pe;
   if (phe) throw phe;
@@ -162,6 +162,14 @@ export async function updatePartPhoto(photoId, partId, partNumber, { imageDataUr
     .update({ image_url: burnedUrl, original_url: originalUrl, machine_label: machine_label || '', position })
     .eq('id', photoId);
   if (error) throw error;
+}
+
+export async function reorderPhotos(orderedPhotoIds) {
+  await Promise.all(
+    orderedPhotoIds.map((id, index) =>
+      supabase.from('part_photos').update({ sort_order: index }).eq('id', id)
+    )
+  );
 }
 
 export async function deletePartPhoto(photoId, partId) {
