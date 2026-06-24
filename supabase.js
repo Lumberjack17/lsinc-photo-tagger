@@ -48,6 +48,16 @@ export async function getAllParts() {
   }));
 }
 
+export async function findPartIdByNumber(part_number) {
+  const { data, error } = await supabase
+    .from('parts')
+    .select('id')
+    .eq('part_number', part_number)
+    .limit(1);
+  if (error) throw error;
+  return data && data.length ? data[0].id : null;
+}
+
 export async function createPart({ part_number, description, printers }) {
   const { data, error } = await supabase
     .from('parts')

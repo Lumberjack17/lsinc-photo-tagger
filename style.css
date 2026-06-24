@@ -187,6 +187,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .preview-actions { flex-wrap: wrap; }
 }
 
+/* ── Pending upload badge ── */
+.pending-badge { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; background: #2a2415; border: 1px solid #4a3f1f; color: #e0b452; white-space: nowrap; }
+
 /* ── Settings modal ── */
 .settings-modal { max-height: 85vh; overflow-y: auto; }
 .settings-section { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #2a2a35; }

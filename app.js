@@ -1,12 +1,13 @@
 import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
   signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
-  getAppConfig, saveAppConfig,
+  getAppConfig, saveAppConfig, findPartIdByNumber,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
 import { scanBarcode } from './scanner.js';
 import * as catalog from './catalog.js';
 import * as vision from './vision.js';
+import * as outbox from './outbox.js';
 
 const PRINTERS = ['PeriOne', 'PeriQ360', 'Perivallo360m', 'PeriH'];
 
@@ -326,51 +327,125 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
   const btn = document.getElementById('btn-burn-save');
   btn.textContent = 'Saving…'; btn.disabled = true;
 
+  // Everything the upload needs, whether it happens now or later from the queue.
+  const payload = {
+    targetPartId,
+    newPart: targetPartId ? null : {
+      part_number: partNumber,
+      description: document.getElementById('input-description').value.trim(),
+      printers: getCheckedPrinters('preview-printers'),
+    },
+    partNumber,
+    imageDataUrl: capturedImageDataUrl,
+    machine_label: machineLabel,
+    position,
+  };
+
+  let savedOffline = false;
   try {
-    let partId = targetPartId;
-
-    if (!partId) {
-      const printers = getCheckedPrinters('preview-printers');
-      const description = document.getElementById('input-description').value.trim();
-      const part = await createPart({ part_number: partNumber, description, printers });
-      partId = part.id;
-    }
-
-    await addPhotoToPart(partId, partNumber, {
-      imageDataUrl: capturedImageDataUrl,
-      machine_label: machineLabel,
-      position,
-    });
-
-    capturedImageDataUrl = null;
-    targetPartId = null;
-    scannedData = null;
-
-    await loadGallery();
-
-    if (currentPart) {
-      currentPart = allParts.find(p => p.id === currentPart.id);
-    }
-
-    if (scanLoop) {
-      // Continuous mode: saved one part, immediately scan the next.
-      btn.textContent = 'Burn & Save'; btn.disabled = false;
-      startScanFlow();
-      return;
-    }
-
-    if (currentPart) {
-      renderPartDetail();
-      showView('view-part-detail');
+    if (navigator.onLine) {
+      await commitSave(payload);
     } else {
-      showView('view-gallery');
+      await outbox.enqueue(payload);
+      savedOffline = true;
     }
   } catch (err) {
-    alert('Save failed: ' + err.message);
-  } finally {
-    btn.textContent = 'Burn & Save'; btn.disabled = false;
+    if (isNetworkError(err)) {
+      await outbox.enqueue(payload); // no signal: keep it and upload later
+      savedOffline = true;
+    } else {
+      alert('Save failed: ' + err.message);
+      btn.textContent = 'Burn & Save'; btn.disabled = false;
+      return;
+    }
+  }
+
+  capturedImageDataUrl = null;
+  targetPartId = null;
+  scannedData = null;
+  await updatePendingBadge();
+
+  if (!savedOffline) {
+    try {
+      await loadGallery();
+      if (currentPart) currentPart = allParts.find(p => p.id === currentPart.id);
+    } catch (e) { /* ignore refresh errors */ }
+  }
+
+  btn.textContent = 'Burn & Save'; btn.disabled = false;
+
+  if (scanLoop) {
+    // Continuous mode: saved one part, immediately scan the next.
+    startScanFlow();
+    return;
+  }
+  if (currentPart) {
+    renderPartDetail();
+    showView('view-part-detail');
+  } else {
+    showView('view-gallery');
   }
 });
+
+// ── Offline upload queue ─────────────────────────────────────────────────────
+// Performs one save: resolve the part (existing, by-number, or create), then upload.
+async function commitSave(p) {
+  let partId = p.targetPartId;
+  if (!partId) {
+    partId = await findPartIdByNumber(p.partNumber); // dedup parts created offline
+    if (!partId) {
+      const part = await createPart(p.newPart);
+      partId = part.id;
+    }
+  }
+  await addPhotoToPart(partId, p.partNumber, {
+    imageDataUrl: p.imageDataUrl,
+    machine_label: p.machine_label,
+    position: p.position,
+  });
+}
+
+function isNetworkError(e) {
+  if (!navigator.onLine) return true;
+  const m = ((e && (e.message || e.toString())) || '').toLowerCase();
+  return /failed to fetch|network|load failed|503|offline|fetch/.test(m);
+}
+
+let flushing = false;
+async function flushOutbox() {
+  if (flushing || !navigator.onLine) return;
+  flushing = true;
+  let uploaded = 0;
+  try {
+    const items = await outbox.getAll();
+    for (const item of items) {
+      try {
+        await commitSave(item.payload);
+        await outbox.remove(item.id);
+        uploaded++;
+      } catch (e) {
+        if (isNetworkError(e)) break;       // signal dropped again, retry later
+        console.error('Skipping a queued item with a permanent error:', e);
+        // leave it queued and move on so one bad item never blocks the rest
+      }
+    }
+  } finally {
+    flushing = false;
+    await updatePendingBadge();
+    if (uploaded) { try { await loadGallery(); } catch (e) {} }
+  }
+}
+
+async function updatePendingBadge() {
+  const el = document.getElementById('pending-badge');
+  if (!el) return;
+  let n = 0;
+  try { n = await outbox.count(); } catch (e) {}
+  el.hidden = n === 0;
+  el.textContent = n === 1 ? '1 pending upload' : n + ' pending uploads';
+}
+
+window.addEventListener('online', flushOutbox);
 
 // ── Gallery ────────────────────────────────────────────────────────────────
 async function loadGallery() {
@@ -964,4 +1039,8 @@ async function loadSharedConfig() {
 
   await loadGallery();
   showView('view-gallery');
+
+  // Show any queued uploads and try to flush them now that we're up.
+  await updatePendingBadge();
+  flushOutbox();
 })();
