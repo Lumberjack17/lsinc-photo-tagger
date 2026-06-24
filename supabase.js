@@ -149,6 +149,29 @@ export function onAuthStateChange(callback) {
   return supabase.auth.onAuthStateChange(callback);
 }
 
+// ── Shared app config (catalog URL, Claude API key, model, prices) ───────────
+// Stored in an "app_config" table so every device shares one setup. Returns null
+// if the table is missing or unreadable, so callers can fall back to local storage.
+export async function getAppConfig() {
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('data')
+    .eq('id', 'default')
+    .maybeSingle();
+  if (error) return null;
+  return (data && data.data) || {};
+}
+
+export async function saveAppConfig(patch) {
+  const current = (await getAppConfig()) || {};
+  const merged = { ...current, ...patch };
+  const { error } = await supabase
+    .from('app_config')
+    .upsert({ id: 'default', data: merged, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  return merged;
+}
+
 export async function updatePartPhoto(photoId, partId, partNumber, { imageDataUrl, machine_label, position }) {
   const strings = [partNumber];
   if (machine_label?.trim()) strings.push(machine_label.trim());

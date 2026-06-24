@@ -1,4 +1,4 @@
-// vision.js — Read a label with Claude Vision, with per-scan + running cost tracking.
+// vision.js - Read a label with Claude Vision, with per-scan + running cost tracking.
 //
 // ⚠️ SECURITY: this calls the Anthropic API directly from the browser, so the API key
 // is stored in this device's localStorage and is visible to anyone with access to the
@@ -21,7 +21,7 @@ const LS_COST = 'vision_cost';
 const LS_PRICES = 'vision_prices'; // user overrides: { model: { in, out } }
 
 // Default published $/million-token rates (input includes image tokens). These can change
-// over time, so they're editable — see getPrice/setPrice below.
+// over time, so they're editable - see getPrice/setPrice below.
 export const PRICING = {
   'claude-opus-4-8':   { in: 5.00, out: 25.00, label: 'Opus 4.8 (most capable)' },
   'claude-sonnet-4-6': { in: 3.00, out: 15.00, label: 'Sonnet 4.6 (balanced)' },
@@ -106,7 +106,7 @@ export async function extractLabel(dataUrl, knownCode) {
     'This is a photo of a warehouse inventory bin label. It has a part/SKU number ' +
     '(a large number, usually top-left and/or printed under the barcode) and a human-readable ' +
     'item description (e.g. "FUSE, 1.25A" or "M8 T-nut with leaf").' +
-    (knownCode ? ` The barcode scanned as "${knownCode}" — use that as the part_number.` : '') +
+    (knownCode ? ` The barcode scanned as "${knownCode}" - use that as the part_number.` : '') +
     ' Extract the part_number and the description. If you cannot read the description, return an empty string for it.';
 
   const body = {

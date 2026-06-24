@@ -30,30 +30,30 @@
 </head>
 <body>
   <div class="test-wrap">
-    <h1>🔍 Scanner Test Harness</h1>
-    <p class="sub">Standalone — no login. Test barcode scanning, Excel-catalog lookup, and Claude Vision before merging.</p>
+    <h1>Scanner Test Harness</h1>
+    <p class="sub">Standalone - no login. Test barcode scanning, Excel-catalog lookup, and Claude Vision before merging.</p>
 
     <!-- Scan -->
     <div class="panel">
-      <h2>1 · Scan a label <span class="badge-env" id="env-badge"></span></h2>
-      <button class="btn-primary" id="btn-scan" style="width:100%;">📷 Scan Barcode</button>
+      <h2>1. Scan a label <span class="badge-env" id="env-badge"></span></h2>
+      <button class="btn-primary" id="btn-scan" style="width:100%;">Scan Barcode</button>
       <div class="result" style="margin-top:12px;">
         <label>Part Number (from barcode)</label>
-        <div class="value" id="out-code">—</div>
+        <div class="value" id="out-code">-</div>
         <label style="margin-top:10px;">Description <span class="src-tag" id="desc-src" hidden></span></label>
-        <div class="desc" id="out-desc">—</div>
+        <div class="desc" id="out-desc">-</div>
       </div>
       <div class="row">
-        <button class="btn-secondary" id="btn-vision" disabled>🤖 Read description with Claude Vision</button>
+        <button class="btn-secondary" id="btn-vision" disabled>Read description with Claude Vision</button>
       </div>
       <div class="status" id="scan-status"></div>
     </div>
 
     <!-- Catalog -->
     <div class="panel">
-      <h2>2 · Excel / CSV catalog</h2>
+      <h2>2. Excel / CSV catalog</h2>
       <div class="status" id="cat-status">No catalog loaded.</div>
-      <label for="cat-url">Published spreadsheet URL (Google Sheets → Publish to web → CSV, or a hosted .csv)</label>
+      <label for="cat-url">Published spreadsheet URL (Google Sheets, File, Share, Publish to web, CSV; or a hosted .csv)</label>
       <input type="text" id="cat-url" placeholder="https://docs.google.com/.../pub?output=csv" autocomplete="off" spellcheck="false">
       <div class="row">
         <button class="btn-primary" id="btn-cat-refresh">Save &amp; Refresh</button>
@@ -65,7 +65,7 @@
 
     <!-- Vision -->
     <div class="panel">
-      <h2>3 · Claude Vision (fallback for parts not in the catalog)</h2>
+      <h2>3. Claude Vision (fallback for parts not in the catalog)</h2>
       <label for="vis-key">Anthropic API key</label>
       <input type="password" id="vis-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
       <label for="vis-model">Model</label>
@@ -77,12 +77,12 @@
       <div class="row">
         <button class="btn-primary" id="btn-vis-save">Save</button>
       </div>
-      <div class="warn">⚠ Your key is stored only on this device and sent straight to Anthropic from the browser. Fine for testing — for the shared/merged app, the key should live on a small server instead. Never commit it.</div>
+      <div class="warn">Your key is stored only on this device and sent straight to Anthropic from the browser. Fine for testing. For the shared app the key is kept in Supabase instead. Never commit it.</div>
     </div>
 
     <!-- Cost -->
     <div class="panel">
-      <h2>4 · Claude Vision cost</h2>
+      <h2>4. Claude Vision cost</h2>
       <div class="cost-grid">
         <div>Total spent<b id="cost-total">$0.000000</b></div>
         <div>Scans<b id="cost-scans">0</b></div>
@@ -137,7 +137,7 @@
       if (!meta) { el.className = 'status'; el.textContent = 'No catalog loaded.'; return; }
       const when = new Date(meta.updatedAt).toLocaleString();
       el.className = 'status ok';
-      el.textContent = `${meta.count} parts loaded · cols: "${meta.columns.part}" → "${meta.columns.description}" · updated ${when}`;
+      el.textContent = `${meta.count} parts loaded, columns "${meta.columns.part}" to "${meta.columns.description}", updated ${when}`;
     }
 
     function renderCost() {
@@ -164,9 +164,9 @@
         $('out-desc').textContent = hit.description || '(blank in catalog)';
         showSrc('catalog');
         $('scan-status').className = 'status ok';
-        $('scan-status').textContent = 'Found in catalog ✓';
+        $('scan-status').textContent = 'Found in catalog.';
       } else {
-        $('out-desc').textContent = '—';
+        $('out-desc').textContent = '-';
         showSrc(null);
         if (vision.getVisionConfig().apiKey) {
           await runVision(); // auto-fallback to Claude Vision
@@ -196,9 +196,9 @@
         showSrc('vision');
         renderCost();
         $('scan-status').className = 'status ok';
-        $('scan-status').textContent =
-          `Claude (${res.model}) ✓ — ${res.usage.input_tokens} in / ${res.usage.output_tokens} out · this scan $${res.cost.toFixed(6)}`;
-        $('cost-last').textContent = '';
+        $('scan-status').textContent = 'Read by Claude (' + res.model + ').';
+        $('cost-last').textContent =
+          `Last scan: ${res.usage.input_tokens} in / ${res.usage.output_tokens} out tokens, $${res.cost.toFixed(6)}.`;
       } catch (e) {
         $('scan-status').className = 'status err';
         $('scan-status').textContent = e.message;

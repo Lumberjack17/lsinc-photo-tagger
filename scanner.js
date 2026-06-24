@@ -1,14 +1,14 @@
-// scanner.js — Barcode scanner tuned for warehouse bin labels.
+// scanner.js - Barcode scanner tuned for warehouse bin labels.
 //
 // Works on BOTH platforms:
 //   • Android / Chrome / Edge → uses the browser's built-in BarcodeDetector (fast).
 //   • iPhone Safari / Firefox / others → falls back to the ZXing library (loaded on demand).
 //
 // Reliability features (so it reads small / sideways / crowded labels correctly):
-//   • Region of interest — only the centered aim box is decoded, so a neighbouring bin's
+//   • Region of interest - only the centered aim box is decoded, so a neighbouring bin's
 //     barcode can't be picked up by mistake. Aim the box at the barcode itself.
-//   • Rotation — each pass also tries a 90°-rotated decode, so sideways barcodes read.
-//   • Confirmation — the same value must be read twice in a row before it's accepted,
+//   • Rotation - each pass also tries a 90°-rotated decode, so sideways barcodes read.
+//   • Confirmation - the same value must be read twice in a row before it's accepted,
 //     which kills the occasional misread / "wrong number".
 //   • High capture resolution + optional torch and zoom controls for small / dim labels.
 //
@@ -57,7 +57,7 @@ export function scanBarcode() {
       <div class="scanner-frame"><div class="scanner-laser"></div></div>
       <div class="scanner-hint">Aim the box at the barcode</div>
       <div class="scanner-controls">
-        <button class="scanner-ctl" id="scanner-torch" type="button" hidden>🔦 Light</button>
+        <button class="scanner-ctl" id="scanner-torch" type="button" hidden>Light</button>
         <input class="scanner-zoom" id="scanner-zoom" type="range" hidden>
       </div>
       <button class="scanner-cancel" type="button">✕ Cancel</button>`;
@@ -83,7 +83,7 @@ export function scanBarcode() {
     }
     overlay.querySelector('.scanner-cancel').addEventListener('click', () => cleanup(null));
 
-    // Accept a value only after it repeats — a misread rarely repeats identically.
+    // Accept a value only after it repeats - a misread rarely repeats identically.
     function consider(value) {
       if (!value) return;
       if (value === lastValue) confirmCount++;
@@ -186,7 +186,7 @@ export function scanBarcode() {
         await video.play();
         setupCameraControls();
       } catch (e) {
-        hint.textContent = 'Camera unavailable — check permissions';
+        hint.textContent = 'Camera unavailable, check permissions';
         setTimeout(() => cleanup(null), 1800);
         return;
       }

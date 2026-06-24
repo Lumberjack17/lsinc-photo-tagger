@@ -1,9 +1,9 @@
-// catalog.js — Part-number → description lookup from an Excel/CSV export.
+// catalog.js - Part-number → description lookup from an Excel/CSV export.
 //
 // Two ways to supply the catalog (use either or both):
 //   1. A published-spreadsheet URL (Google Sheets → File → Share → Publish to web → CSV,
 //      or any hosted .csv). The app fetches it and caches it, so editing the sheet and
-//      refreshing pulls the new data — no re-upload needed.
+//      refreshing pulls the new data - no re-upload needed.
 //   2. A one-off file import (.xlsx / .xls / .csv) from the device.
 //
 // The parsed map is cached in localStorage so lookups work instantly and offline.

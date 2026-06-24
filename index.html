@@ -24,11 +24,12 @@
   <h1>📷 Photo Tagger</h1>
   <div class="nav-actions">
     <span id="auth-badge" class="auth-badge" hidden></span>
-    <button class="btn-secondary" id="btn-settings" title="Scanner & catalog settings">⚙</button>
+    <button class="btn-secondary" id="btn-settings" title="Scanner and catalog settings">Settings</button>
     <button class="btn-secondary" id="btn-nav-gallery">Gallery</button>
     <button class="btn-secondary" id="btn-login">Login</button>
     <button class="btn-secondary" id="btn-logout" hidden>Logout</button>
-    <button class="btn-primary" id="btn-open-camera" hidden>+ New Photo</button>
+    <button class="btn-secondary" id="btn-open-camera" hidden>New Photo</button>
+    <button class="btn-primary" id="btn-scan-start" hidden>Scan Parts</button>
   </div>
 </nav>
 
@@ -49,8 +50,7 @@
 <!-- ── Capture ── -->
 <div id="view-capture" class="view" hidden>
   <div id="capture-choice" class="capture-choice">
-    <button class="btn-primary btn-capture-choice" id="btn-scan-label">🔍 Scan Label, then Photo</button>
-    <button class="btn-secondary btn-capture-choice" id="btn-start-camera">📷 Take a Photo</button>
+    <button class="btn-primary btn-capture-choice" id="btn-start-camera">📷 Take a Photo</button>
     <button class="btn-secondary btn-capture-choice" id="btn-use-file">📁 Upload from Device</button>
     <button class="btn-secondary btn-capture-choice" id="btn-cancel-capture">✕ Cancel</button>
   </div>
@@ -190,45 +190,51 @@
 
 <!-- ── Scanner / Catalog Settings Modal ── -->
 <div id="modal-settings" class="modal-backdrop" hidden>
-  <div class="modal">
-    <h2>⚙ Scanner Settings</h2>
+  <div class="modal settings-modal">
+    <h2>Scanner Settings</h2>
+    <p id="settings-sync" style="font-size:.78rem;color:var(--muted);margin-bottom:6px;"></p>
+    <p style="margin-bottom:10px;"><a href="scanner-test.html" style="color:var(--accent);font-size:.85rem;">Open scanner test page (no login)</a></p>
 
-    <p style="margin-bottom:12px;"><a href="scanner-test.html" style="color:var(--accent);font-size:.9rem;">🔍 Open scanner test page (no login needed) →</a></p>
-
-    <div>
-      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Catalog (part number → description)</label>
-      <p id="settings-cat-status" style="font-size:.82rem;color:var(--muted);margin-bottom:6px;">No catalog loaded.</p>
+    <section class="settings-section">
+      <h3>Catalog (part number to description)</h3>
+      <p id="settings-cat-status" class="settings-note">No catalog loaded.</p>
       <input type="text" id="settings-cat-url" placeholder="Published sheet CSV URL" autocomplete="off" spellcheck="false">
       <div class="modal-actions" style="margin-top:8px;">
-        <button class="btn-secondary" id="settings-cat-import">Import file…</button>
-        <button class="btn-primary" id="settings-cat-refresh">Save &amp; Refresh</button>
+        <button class="btn-secondary" id="settings-cat-import">Import file</button>
+        <button class="btn-primary" id="settings-cat-refresh">Save and refresh</button>
       </div>
       <input type="file" id="settings-cat-file" accept=".csv,.xlsx,.xls" hidden>
-    </div>
+    </section>
 
-    <div style="margin-top:14px;">
-      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Claude Vision (fallback for parts not in the catalog)</label>
-      <input type="password" id="settings-vis-key" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false">
-      <select id="settings-vis-model" style="margin-top:8px;width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:9px 11px;color:var(--text);"></select>
+    <section class="settings-section">
+      <h3>Claude Vision</h3>
+      <p class="settings-note">Used only when a scanned part is not in the catalog.</p>
+      <input type="password" id="settings-vis-key" placeholder="Anthropic API key (sk-ant-...)" autocomplete="off" spellcheck="false">
+      <select id="settings-vis-model"></select>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <div style="flex:1;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Input $ / 1M tokens</label>
-          <input type="number" id="settings-price-in" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:8px 10px;color:var(--text);">
+          <label class="settings-mini">Input $ per 1M tokens</label>
+          <input type="number" id="settings-price-in" step="0.01" min="0">
         </div>
         <div style="flex:1;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;">Output $ / 1M tokens</label>
-          <input type="number" id="settings-price-out" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid #333;border-radius:8px;padding:8px 10px;color:var(--text);">
+          <label class="settings-mini">Output $ per 1M tokens</label>
+          <input type="number" id="settings-price-out" step="0.01" min="0">
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85rem;color:var(--text);text-transform:none;">
-        <input type="checkbox" id="settings-vis-enabled"> Use Claude Vision when a part isn't in the catalog
+      <label class="settings-check">
+        <input type="checkbox" id="settings-vis-enabled"> Use Claude Vision for parts not in the catalog
       </label>
-      <p style="font-size:.75rem;color:#e0b452;margin-top:8px;">⚠ The key is stored on this device only. For the shared app, move it to a server. Never commit it.</p>
-      <p id="settings-cost" style="font-size:.82rem;color:var(--muted);margin-top:8px;"></p>
-    </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Usage and cost</h3>
+      <p id="settings-cost" class="settings-note"></p>
+      <button class="btn-sm danger" id="settings-cost-reset">Reset cost counter</button>
+    </section>
+
+    <p class="settings-note" style="color:#e0b452;">The API key is shared across all devices through Supabase. Anyone signed in can read it, so treat it as a shared secret and never commit it to the repo.</p>
 
     <div class="modal-actions" style="margin-top:14px;">
-      <button class="btn-sm danger" id="settings-cost-reset">Reset cost</button>
       <button class="btn-secondary" id="settings-cancel">Close</button>
       <button class="btn-primary" id="settings-save">Save</button>
     </div>

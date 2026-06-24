@@ -1,6 +1,7 @@
 import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
   signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
+  getAppConfig, saveAppConfig,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
 import { scanBarcode } from './scanner.js';
@@ -19,10 +20,13 @@ let isAuthorized = false;
 let currentEditingPhoto = null;
 let scannedData = null; // { partNumber, description } captured from a label scan; pre-fills the preview form
 let scanLoop = false;   // when true, saving a photo jumps straight back to scanning the next part
+let loadedPrices = null; // model -> { in, out } from shared config
+let configShared = false; // true once the Supabase app_config row has been read
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function updateAuthUI() {
   document.getElementById('btn-open-camera').hidden = !isAuthorized;
+  document.getElementById('btn-scan-start').hidden = !isAuthorized;
   document.getElementById('btn-login').hidden = isAuthorized;
   document.getElementById('btn-logout').hidden = !isAuthorized;
   document.getElementById('btn-detail-add-photo').hidden = !isAuthorized;
@@ -152,7 +156,7 @@ document.getElementById('btn-start-camera').addEventListener('click', () => star
 // Scan a label → look up the part number → go straight to taking the photo with fields pre-filled.
 async function startScanFlow() {
   const result = await scanBarcode();
-  if (!result) { // user cancelled — end the loop and go back
+  if (!result) { // user cancelled, end the loop and go back
     scanLoop = false;
     showView(currentPart ? 'view-part-detail' : 'view-gallery');
     return;
@@ -162,20 +166,24 @@ async function startScanFlow() {
 
   // 1. Try the Excel/CSV catalog first (exact, free, offline).
   const hit = catalog.lookupPart(result.code);
+  const vc = vision.getVisionConfig();
   if (hit) {
     scannedData.description = hit.description || '';
-  } else if (vision.getVisionConfig().apiKey) {
-    // 2. Not in the catalog → ask Claude Vision to read the description. Best-effort; never blocks.
+  } else if (vc.enabled && vc.apiKey) {
+    // 2. Not in the catalog, so ask Claude Vision to read the description. Best-effort; never blocks.
     try {
       const res = await vision.extractLabel(result.frame, result.code);
       scannedData.description = res.description || '';
     } catch (e) { /* user can still type it in the preview */ }
   }
 
+  // Go straight to the camera so the user just takes the photo, no extra taps.
+  showView('view-capture');
   startCameraFeed();
 }
 
-document.getElementById('btn-scan-label').addEventListener('click', () => {
+document.getElementById('btn-scan-start').addEventListener('click', () => {
+  targetPartId = null;
   scanLoop = true;
   startScanFlow();
 });
@@ -806,17 +814,37 @@ document.querySelector('nav h1').addEventListener('click', () => {
 
 
 // ── Settings (catalog + Claude Vision) ───────────────────────────────────────
+function applyConfig(cfg) {
+  if (!cfg) return;
+  if (typeof cfg.catalogUrl === 'string') catalog.setCatalogUrl(cfg.catalogUrl);
+  vision.setVisionConfig({
+    apiKey: cfg.apiKey || '',
+    model: cfg.model || 'claude-opus-4-8',
+    enabled: !!cfg.enabled,
+  });
+  if (cfg.prices) {
+    loadedPrices = cfg.prices;
+    for (const m in cfg.prices) {
+      const p = cfg.prices[m];
+      if (p) vision.setPrice(m, p.in, p.out);
+    }
+  }
+}
+
 function renderSettingsStatus() {
   const meta = catalog.getMeta();
   const status = document.getElementById('settings-cat-status');
   if (meta) {
-    status.textContent = `${meta.count} parts loaded · "${meta.columns.part}" → "${meta.columns.description}" · updated ${new Date(meta.updatedAt).toLocaleString()}`;
+    status.textContent = `${meta.count} parts loaded, "${meta.columns.part}" to "${meta.columns.description}", updated ${new Date(meta.updatedAt).toLocaleString()}`;
   } else {
     status.textContent = 'No catalog loaded.';
   }
   const c = vision.getCostSummary();
   document.getElementById('settings-cost').textContent =
-    `Claude Vision: ${c.scans} scans · $${c.totalUSD.toFixed(4)} total`;
+    `${c.scans} Claude Vision scans so far, $${c.totalUSD.toFixed(4)} total (${c.inputTokens.toLocaleString()} in / ${c.outputTokens.toLocaleString()} out tokens).`;
+  document.getElementById('settings-sync').textContent = configShared
+    ? 'Settings are shared across all signed-in devices.'
+    : 'Settings are saved on this device only. To share them, run the app_config SQL in Supabase.';
 }
 
 function fillPrices(model) {
@@ -850,18 +878,33 @@ document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('settings-cancel').addEventListener('click', () => {
   document.getElementById('modal-settings').hidden = true;
 });
-document.getElementById('settings-save').addEventListener('click', () => {
+document.getElementById('settings-save').addEventListener('click', async () => {
   const model = document.getElementById('settings-vis-model').value;
-  catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
-  vision.setVisionConfig({
-    apiKey: document.getElementById('settings-vis-key').value,
-    model,
-    enabled: document.getElementById('settings-vis-enabled').checked,
-  });
-  vision.setPrice(model,
-    document.getElementById('settings-price-in').value,
-    document.getElementById('settings-price-out').value);
-  document.getElementById('modal-settings').hidden = true;
+  const catalogUrl = document.getElementById('settings-cat-url').value.trim();
+  const apiKey = document.getElementById('settings-vis-key').value.trim();
+  const enabled = document.getElementById('settings-vis-enabled').checked;
+  const priceIn = parseFloat(document.getElementById('settings-price-in').value);
+  const priceOut = parseFloat(document.getElementById('settings-price-out').value);
+
+  // Apply locally right away.
+  catalog.setCatalogUrl(catalogUrl);
+  vision.setVisionConfig({ apiKey, model, enabled });
+  vision.setPrice(model, priceIn, priceOut);
+
+  // Save to the shared Supabase config so other devices get it too.
+  const prices = { ...(loadedPrices || {}), [model]: { in: priceIn, out: priceOut } };
+  loadedPrices = prices;
+  const btn = document.getElementById('settings-save');
+  btn.disabled = true;
+  try {
+    await saveAppConfig({ catalogUrl, apiKey, model, enabled, prices });
+    document.getElementById('modal-settings').hidden = true;
+  } catch (e) {
+    document.getElementById('settings-sync').textContent =
+      'Saved on this device. Shared save failed (run the app_config SQL in Supabase to share across devices).';
+  } finally {
+    btn.disabled = false;
+  }
 });
 document.getElementById('settings-cat-refresh').addEventListener('click', async () => {
   catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
@@ -884,6 +927,16 @@ document.getElementById('settings-cost-reset').addEventListener('click', () => {
   vision.resetCost(); renderSettingsStatus();
 });
 
+// Load shared config (catalog URL, API key, model, prices) from Supabase, then
+// refresh the catalog from its URL in the background so every device stays current.
+async function loadSharedConfig() {
+  try {
+    const cfg = await getAppConfig();
+    if (cfg) { configShared = true; applyConfig(cfg); }
+  } catch (e) { /* table missing or not signed in; local settings still apply */ }
+  if (catalog.getCatalogUrl()) catalog.refreshFromUrl().then(() => {}).catch(() => {});
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 (async () => {
   // Load the cached part-number catalog into memory for instant lookups.
@@ -899,6 +952,7 @@ document.getElementById('settings-cost-reset').addEventListener('click', () => {
   // Listen for auth changes (handles OAuth redirect callback too)
   onAuthStateChange(async (_event, session) => {
     await handleSession(session);
+    await loadSharedConfig();
     // Re-render current view to reflect auth state
     if (currentPart) renderPartDetail();
   });
@@ -906,6 +960,7 @@ document.getElementById('settings-cost-reset').addEventListener('click', () => {
   // Check existing session on load
   const session = await getSession();
   await handleSession(session);
+  await loadSharedConfig();
 
   await loadGallery();
   showView('view-gallery');

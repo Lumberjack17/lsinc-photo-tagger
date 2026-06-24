@@ -187,6 +187,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .preview-actions { flex-wrap: wrap; }
 }
 
+/* ── Settings modal ── */
+.settings-modal { max-height: 85vh; overflow-y: auto; }
+.settings-section { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #2a2a35; }
+.settings-section h3 { font-size: 0.9rem; margin-bottom: 4px; }
+.settings-note { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; }
+.settings-mini { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; }
+.settings-check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.85rem; color: var(--text); }
+#modal-settings input[type=text], #modal-settings input[type=password], #modal-settings input[type=number], #modal-settings select {
+  width: 100%; background: var(--surface2); border: 1px solid #333; border-radius: 8px; padding: 9px 11px; color: var(--text); font-size: 0.9rem;
+}
+#modal-settings select { margin-top: 8px; }
+
 /* ── Barcode scanner overlay ── */
 .scanner-overlay { position: fixed; inset: 0; z-index: 1000; background: #000; display: flex; align-items: center; justify-content: center; }
 .scanner-video { width: 100%; height: 100%; object-fit: cover; }
