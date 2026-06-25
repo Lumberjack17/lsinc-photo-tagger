@@ -1,8 +1,13 @@
 import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
   reorderPhotos, signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
+  getAppConfig, saveAppConfig, findPartIdByNumber,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
+import { scanBarcode } from './scanner.js';
+import * as catalog from './catalog.js';
+import * as vision from './vision.js';
+import * as outbox from './outbox.js';
 
 const PRINTERS = ['PeriOne', 'PeriQ360', 'Perivallo360m', 'PeriH'];
 
@@ -14,10 +19,15 @@ let targetPartId = null;
 let activePrinterFilter = null;
 let isAuthorized = false;
 let currentEditingPhoto = null;
+let scannedData = null; // { partNumber, description } captured from a label scan; pre-fills the preview form
+let scanLoop = false;   // when true, saving a photo jumps straight back to scanning the next part
+let loadedPrices = null; // model -> { in, out } from shared config
+let configShared = false; // true once the Supabase app_config row has been read
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function updateAuthUI() {
   document.getElementById('btn-open-camera').hidden = !isAuthorized;
+  document.getElementById('btn-scan-start').hidden = !isAuthorized;
   document.getElementById('btn-login').hidden = isAuthorized;
   document.getElementById('btn-logout').hidden = !isAuthorized;
   document.getElementById('btn-detail-add-photo').hidden = !isAuthorized;
@@ -137,13 +147,52 @@ function stopCamera() {
 
 document.getElementById('btn-open-camera').addEventListener('click', () => {
   targetPartId = null;
+  scannedData = null;
+  scanLoop = false;
   showCaptureView();
 });
 
 document.getElementById('btn-start-camera').addEventListener('click', () => startCameraFeed());
 
+// Scan a label → look up the part number → go straight to taking the photo with fields pre-filled.
+async function startScanFlow() {
+  const result = await scanBarcode();
+  if (!result) { // user cancelled, end the loop and go back
+    scanLoop = false;
+    showView(currentPart ? 'view-part-detail' : 'view-gallery');
+    return;
+  }
+
+  scannedData = { partNumber: result.code, description: '' };
+
+  // 1. Try the Excel/CSV catalog first (exact, free, offline).
+  const hit = catalog.lookupPart(result.code);
+  const vc = vision.getVisionConfig();
+  if (hit) {
+    scannedData.description = hit.description || '';
+  } else if (vc.enabled && vc.apiKey) {
+    // 2. Not in the catalog, so ask Claude Vision to read the description. Best-effort; never blocks.
+    try {
+      const res = await vision.extractLabel(result.frame, result.code);
+      scannedData.description = res.description || '';
+    } catch (e) { /* user can still type it in the preview */ }
+  }
+
+  // Go straight to the camera so the user just takes the photo, no extra taps.
+  showView('view-capture');
+  startCameraFeed();
+}
+
+document.getElementById('btn-scan-start').addEventListener('click', () => {
+  targetPartId = null;
+  scanLoop = true;
+  startScanFlow();
+});
+
 document.getElementById('btn-cancel-capture').addEventListener('click', () => {
   targetPartId = null;
+  scannedData = null;
+  scanLoop = false;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -199,6 +248,8 @@ document.getElementById('btn-edit-photo').addEventListener('click', () => {
 document.getElementById('btn-cancel-preview').addEventListener('click', () => {
   capturedImageDataUrl = null;
   targetPartId = null;
+  scannedData = null;
+  scanLoop = false;
   showView(currentPart ? 'view-part-detail' : 'view-gallery');
 });
 
@@ -231,6 +282,16 @@ function openPreview() {
     document.getElementById('preview-existing-info').hidden = true;
     renderPrinterCheckboxes('preview-printers');
     document.getElementById('input-description').value = '';
+  }
+
+  // Pre-fill from a label scan (kept across Retake until the capture ends).
+  if (scannedData && !targetPartId) {
+    const input = document.getElementById('input-part-number');
+    input.value = scannedData.partNumber;
+    input.dispatchEvent(new Event('input', { bubbles: true })); // runs the existing part-number lookup / auto-fill
+    if (!targetPartId && scannedData.description) {
+      document.getElementById('input-description').value = scannedData.description;
+    }
   }
 
   showView('view-preview');
@@ -266,40 +327,125 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
   const btn = document.getElementById('btn-burn-save');
   btn.textContent = 'Saving…'; btn.disabled = true;
 
+  // Everything the upload needs, whether it happens now or later from the queue.
+  const payload = {
+    targetPartId,
+    newPart: targetPartId ? null : {
+      part_number: partNumber,
+      description: document.getElementById('input-description').value.trim(),
+      printers: getCheckedPrinters('preview-printers'),
+    },
+    partNumber,
+    imageDataUrl: capturedImageDataUrl,
+    machine_label: machineLabel,
+    position,
+  };
+
+  let savedOffline = false;
   try {
-    let partId = targetPartId;
-
-    if (!partId) {
-      const printers = getCheckedPrinters('preview-printers');
-      const description = document.getElementById('input-description').value.trim();
-      const part = await createPart({ part_number: partNumber, description, printers });
-      partId = part.id;
-    }
-
-    await addPhotoToPart(partId, partNumber, {
-      imageDataUrl: capturedImageDataUrl,
-      machine_label: machineLabel,
-      position,
-    });
-
-    capturedImageDataUrl = null;
-    targetPartId = null;
-
-    await loadGallery();
-
-    if (currentPart) {
-      currentPart = allParts.find(p => p.id === currentPart.id);
-      renderPartDetail();
-      showView('view-part-detail');
+    if (navigator.onLine) {
+      await commitSave(payload);
     } else {
-      showView('view-gallery');
+      await outbox.enqueue(payload);
+      savedOffline = true;
     }
   } catch (err) {
-    alert('Save failed: ' + err.message);
-  } finally {
-    btn.textContent = 'Burn & Save'; btn.disabled = false;
+    if (isNetworkError(err)) {
+      await outbox.enqueue(payload); // no signal: keep it and upload later
+      savedOffline = true;
+    } else {
+      alert('Save failed: ' + err.message);
+      btn.textContent = 'Burn & Save'; btn.disabled = false;
+      return;
+    }
+  }
+
+  capturedImageDataUrl = null;
+  targetPartId = null;
+  scannedData = null;
+  await updatePendingBadge();
+
+  if (!savedOffline) {
+    try {
+      await loadGallery();
+      if (currentPart) currentPart = allParts.find(p => p.id === currentPart.id);
+    } catch (e) { /* ignore refresh errors */ }
+  }
+
+  btn.textContent = 'Burn & Save'; btn.disabled = false;
+
+  if (scanLoop) {
+    // Continuous mode: saved one part, immediately scan the next.
+    startScanFlow();
+    return;
+  }
+  if (currentPart) {
+    renderPartDetail();
+    showView('view-part-detail');
+  } else {
+    showView('view-gallery');
   }
 });
+
+// ── Offline upload queue ─────────────────────────────────────────────────────
+// Performs one save: resolve the part (existing, by-number, or create), then upload.
+async function commitSave(p) {
+  let partId = p.targetPartId;
+  if (!partId) {
+    partId = await findPartIdByNumber(p.partNumber); // dedup parts created offline
+    if (!partId) {
+      const part = await createPart(p.newPart);
+      partId = part.id;
+    }
+  }
+  await addPhotoToPart(partId, p.partNumber, {
+    imageDataUrl: p.imageDataUrl,
+    machine_label: p.machine_label,
+    position: p.position,
+  });
+}
+
+function isNetworkError(e) {
+  if (!navigator.onLine) return true;
+  const m = ((e && (e.message || e.toString())) || '').toLowerCase();
+  return /failed to fetch|network|load failed|503|offline|fetch/.test(m);
+}
+
+let flushing = false;
+async function flushOutbox() {
+  if (flushing || !navigator.onLine) return;
+  flushing = true;
+  let uploaded = 0;
+  try {
+    const items = await outbox.getAll();
+    for (const item of items) {
+      try {
+        await commitSave(item.payload);
+        await outbox.remove(item.id);
+        uploaded++;
+      } catch (e) {
+        if (isNetworkError(e)) break;       // signal dropped again, retry later
+        console.error('Skipping a queued item with a permanent error:', e);
+        // leave it queued and move on so one bad item never blocks the rest
+      }
+    }
+  } finally {
+    flushing = false;
+    await updatePendingBadge();
+    if (uploaded) { try { await loadGallery(); } catch (e) {} }
+  }
+}
+
+async function updatePendingBadge() {
+  const el = document.getElementById('pending-badge');
+  if (!el) return;
+  let n = 0;
+  try { n = await outbox.count(); } catch (e) {}
+  el.hidden = n === 0;
+  el.textContent = n === 1 ? '1 pending upload' : n + ' pending uploads';
+}
+
+window.addEventListener('online', flushOutbox);
 
 // ── Gallery ────────────────────────────────────────────────────────────────
 async function loadGallery() {
@@ -427,6 +573,8 @@ document.getElementById('btn-back-gallery').addEventListener('click', () => {
 
 document.getElementById('btn-detail-add-photo').addEventListener('click', () => {
   targetPartId = currentPart.id;
+  scannedData = null;
+  scanLoop = false;
   showCaptureView();
 });
 
@@ -770,8 +918,135 @@ document.querySelector('nav h1').addEventListener('click', () => {
 });
 
 
+// ── Settings (catalog + Claude Vision) ───────────────────────────────────────
+function applyConfig(cfg) {
+  if (!cfg) return;
+  if (typeof cfg.catalogUrl === 'string') catalog.setCatalogUrl(cfg.catalogUrl);
+  vision.setVisionConfig({
+    apiKey: cfg.apiKey || '',
+    model: cfg.model || 'claude-opus-4-8',
+    enabled: !!cfg.enabled,
+  });
+  if (cfg.prices) {
+    loadedPrices = cfg.prices;
+    for (const m in cfg.prices) {
+      const p = cfg.prices[m];
+      if (p) vision.setPrice(m, p.in, p.out);
+    }
+  }
+}
+
+function renderSettingsStatus() {
+  const meta = catalog.getMeta();
+  const status = document.getElementById('settings-cat-status');
+  if (meta) {
+    status.textContent = `${meta.count} parts loaded, "${meta.columns.part}" to "${meta.columns.description}", updated ${new Date(meta.updatedAt).toLocaleString()}`;
+  } else {
+    status.textContent = 'No catalog loaded.';
+  }
+  const c = vision.getCostSummary();
+  document.getElementById('settings-cost').textContent =
+    `${c.scans} Claude Vision scans so far, $${c.totalUSD.toFixed(4)} total (${c.inputTokens.toLocaleString()} in / ${c.outputTokens.toLocaleString()} out tokens).`;
+  document.getElementById('settings-sync').textContent = configShared
+    ? 'Settings are shared across all signed-in devices.'
+    : 'Settings are saved on this device only. To share them, run the app_config SQL in Supabase.';
+}
+
+function fillPrices(model) {
+  const p = vision.getPrice(model);
+  document.getElementById('settings-price-in').value = p.in;
+  document.getElementById('settings-price-out').value = p.out;
+}
+
+function openSettings() {
+  const modelSel = document.getElementById('settings-vis-model');
+  if (!modelSel.options.length) {
+    vision.MODELS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = vision.PRICING[m].label;
+      modelSel.appendChild(opt);
+    });
+    // Show the saved rate for whichever model is selected.
+    modelSel.addEventListener('change', () => fillPrices(modelSel.value));
+  }
+  const cfg = vision.getVisionConfig();
+  document.getElementById('settings-cat-url').value = catalog.getCatalogUrl();
+  document.getElementById('settings-vis-key').value = cfg.apiKey;
+  modelSel.value = cfg.model;
+  fillPrices(cfg.model);
+  document.getElementById('settings-vis-enabled').checked = cfg.enabled;
+  renderSettingsStatus();
+  document.getElementById('modal-settings').hidden = false;
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('settings-cancel').addEventListener('click', () => {
+  document.getElementById('modal-settings').hidden = true;
+});
+document.getElementById('settings-save').addEventListener('click', async () => {
+  const model = document.getElementById('settings-vis-model').value;
+  const catalogUrl = document.getElementById('settings-cat-url').value.trim();
+  const apiKey = document.getElementById('settings-vis-key').value.trim();
+  const enabled = document.getElementById('settings-vis-enabled').checked;
+  const priceIn = parseFloat(document.getElementById('settings-price-in').value);
+  const priceOut = parseFloat(document.getElementById('settings-price-out').value);
+
+  // Apply locally right away.
+  catalog.setCatalogUrl(catalogUrl);
+  vision.setVisionConfig({ apiKey, model, enabled });
+  vision.setPrice(model, priceIn, priceOut);
+
+  // Save to the shared Supabase config so other devices get it too.
+  const prices = { ...(loadedPrices || {}), [model]: { in: priceIn, out: priceOut } };
+  loadedPrices = prices;
+  const btn = document.getElementById('settings-save');
+  btn.disabled = true;
+  try {
+    await saveAppConfig({ catalogUrl, apiKey, model, enabled, prices });
+    document.getElementById('modal-settings').hidden = true;
+  } catch (e) {
+    document.getElementById('settings-sync').textContent =
+      'Saved on this device. Shared save failed (run the app_config SQL in Supabase to share across devices).';
+  } finally {
+    btn.disabled = false;
+  }
+});
+document.getElementById('settings-cat-refresh').addEventListener('click', async () => {
+  catalog.setCatalogUrl(document.getElementById('settings-cat-url').value);
+  const status = document.getElementById('settings-cat-status');
+  status.textContent = 'Fetching…';
+  try { await catalog.refreshFromUrl(); renderSettingsStatus(); }
+  catch (e) { status.textContent = 'Error: ' + e.message; }
+});
+document.getElementById('settings-cat-import').addEventListener('click', () =>
+  document.getElementById('settings-cat-file').click());
+document.getElementById('settings-cat-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const status = document.getElementById('settings-cat-status');
+  status.textContent = 'Parsing ' + file.name + '…';
+  try { await catalog.importFile(file); renderSettingsStatus(); }
+  catch (err) { status.textContent = 'Error: ' + err.message; }
+  e.target.value = '';
+});
+document.getElementById('settings-cost-reset').addEventListener('click', () => {
+  vision.resetCost(); renderSettingsStatus();
+});
+
+// Load shared config (catalog URL, API key, model, prices) from Supabase, then
+// refresh the catalog from its URL in the background so every device stays current.
+async function loadSharedConfig() {
+  try {
+    const cfg = await getAppConfig();
+    if (cfg) { configShared = true; applyConfig(cfg); }
+  } catch (e) { /* table missing or not signed in; local settings still apply */ }
+  if (catalog.getCatalogUrl()) catalog.refreshFromUrl().then(() => {}).catch(() => {});
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 (async () => {
+  // Load the cached part-number catalog into memory for instant lookups.
+  catalog.loadCached();
+
   // Detect OAuth errors returned in URL hash
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
   if (hashParams.get('error')) {
@@ -782,6 +1057,7 @@ document.querySelector('nav h1').addEventListener('click', () => {
   // Listen for auth changes (handles OAuth redirect callback too)
   onAuthStateChange(async (_event, session) => {
     await handleSession(session);
+    await loadSharedConfig();
     // Re-render current view to reflect auth state
     if (currentPart) renderPartDetail();
   });
@@ -789,7 +1065,12 @@ document.querySelector('nav h1').addEventListener('click', () => {
   // Check existing session on load
   const session = await getSession();
   await handleSession(session);
+  await loadSharedConfig();
 
   await loadGallery();
   showView('view-gallery');
+
+  // Show any queued uploads and try to flush them now that we're up.
+  await updatePendingBadge();
+  flushOutbox();
 })();

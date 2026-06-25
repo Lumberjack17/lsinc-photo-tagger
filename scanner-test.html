@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Scanner Test</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .test-wrap { max-width: 640px; margin: 0 auto; padding: 20px 18px 60px; }
+    .test-wrap h1 { color: var(--accent); font-size: 1.25rem; margin-bottom: 4px; }
+    .test-wrap p.sub { color: var(--muted); font-size: .85rem; margin-bottom: 16px; }
+    .panel { background: var(--surface); border: 1px solid #2a2a35; border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
+    .panel h2 { font-size: .95rem; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .panel label { display: block; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 4px; }
+    .panel input, .panel select { width: 100%; background: var(--surface2); border: 1px solid #333; border-radius: 8px; padding: 9px 11px; color: var(--text); font-size: .9rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .row > button { flex: 1; min-width: 120px; }
+    .status { font-size: .82rem; color: var(--muted); margin-top: 8px; }
+    .status.ok { color: #5ad17a; }
+    .status.err { color: var(--danger); }
+    .result .value { font-size: 1.5rem; font-weight: 700; word-break: break-all; }
+    .result .desc { font-size: 1.05rem; margin-top: 4px; }
+    .src-tag { display: inline-block; font-size: .7rem; padding: 2px 8px; border-radius: 20px; background: var(--surface2); border: 1px solid #333; color: var(--muted); margin-left: 8px; vertical-align: middle; }
+    .cost-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: .85rem; }
+    .cost-grid div { background: var(--surface2); border-radius: 8px; padding: 8px 10px; }
+    .cost-grid b { display: block; font-size: 1.1rem; }
+    .warn { font-size: .78rem; color: #e0b452; background: #2a2415; border: 1px solid #4a3f1f; border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+    .badge-env { display: inline-block; font-size: .72rem; padding: 3px 10px; border-radius: 20px; background: var(--surface2); border: 1px solid #333; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="test-wrap">
+    <h1>Scanner Test Harness</h1>
+    <p class="sub">Standalone - no login. Test barcode scanning, Excel-catalog lookup, and Claude Vision before merging.</p>
+
+    <!-- Scan -->
+    <div class="panel">
+      <h2>1. Scan a label <span class="badge-env" id="env-badge"></span></h2>
+      <button class="btn-primary" id="btn-scan" style="width:100%;">Scan Barcode</button>
+      <div class="result" style="margin-top:12px;">
+        <label>Part Number (from barcode)</label>
+        <div class="value" id="out-code">-</div>
+        <label style="margin-top:10px;">Description <span class="src-tag" id="desc-src" hidden></span></label>
+        <div class="desc" id="out-desc">-</div>
+      </div>
+      <div class="row">
+        <button class="btn-secondary" id="btn-vision" disabled>Read description with Claude Vision</button>
+      </div>
+      <div class="status" id="scan-status"></div>
+    </div>
+
+    <!-- Catalog -->
+    <div class="panel">
+      <h2>2. Excel / CSV catalog</h2>
+      <div class="status" id="cat-status">No catalog loaded.</div>
+      <label for="cat-url">Published spreadsheet URL (Google Sheets, File, Share, Publish to web, CSV; or a hosted .csv)</label>
+      <input type="text" id="cat-url" placeholder="https://docs.google.com/.../pub?output=csv" autocomplete="off" spellcheck="false">
+      <div class="row">
+        <button class="btn-primary" id="btn-cat-refresh">Save &amp; Refresh</button>
+        <button class="btn-secondary" id="btn-cat-import">Import file…</button>
+      </div>
+      <input type="file" id="cat-file" accept=".csv,.xlsx,.xls" hidden>
+      <p class="status">Edit the sheet anytime; tap <b>Save &amp; Refresh</b> (or reopen the app) to pull the latest. Sheet needs a part-number column and a description column.</p>
+    </div>
+
+    <!-- Vision -->
+    <div class="panel">
+      <h2>3. Claude Vision (fallback for parts not in the catalog)</h2>
+      <label for="vis-key">Anthropic API key</label>
+      <input type="password" id="vis-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      <label for="vis-model">Model</label>
+      <select id="vis-model"></select>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><label for="vis-price-in">Input $ / 1M tokens</label><input type="number" id="vis-price-in" step="0.01" min="0"></div>
+        <div style="flex:1;"><label for="vis-price-out">Output $ / 1M tokens</label><input type="number" id="vis-price-out" step="0.01" min="0"></div>
+      </div>
+      <div class="row">
+        <button class="btn-primary" id="btn-vis-save">Save</button>
+      </div>
+      <div class="warn">Your key is stored only on this device and sent straight to Anthropic from the browser. Fine for testing. For the shared app the key is kept in Supabase instead. Never commit it.</div>
+    </div>
+
+    <!-- Cost -->
+    <div class="panel">
+      <h2>4. Claude Vision cost</h2>
+      <div class="cost-grid">
+        <div>Total spent<b id="cost-total">$0.000000</b></div>
+        <div>Scans<b id="cost-scans">0</b></div>
+        <div>Input tokens<b id="cost-in">0</b></div>
+        <div>Output tokens<b id="cost-out">0</b></div>
+      </div>
+      <div class="status" id="cost-last"></div>
+      <div class="row">
+        <button class="btn-secondary" id="btn-cost-reset">Reset counter</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { scanBarcode } from './scanner.js';
+    import * as catalog from './catalog.js';
+    import * as vision from './vision.js';
+
+    const $ = id => document.getElementById(id);
+    let lastFrame = null, lastCode = null;
+
+    // ── Engine badge ──
+    $('env-badge').textContent = ('BarcodeDetector' in window) ? 'native scanner' : 'ZXing fallback';
+
+    // ── Init from storage ──
+    catalog.loadCached();
+    renderCatalogStatus();
+
+    const cfg = vision.getVisionConfig();
+    $('vis-key').value = cfg.apiKey;
+    $('cat-url').value = catalog.getCatalogUrl();
+    vision.MODELS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = vision.PRICING[m].label;
+      $('vis-model').appendChild(opt);
+    });
+    $('vis-model').value = cfg.model;
+    fillPrices(cfg.model);
+    $('vis-model').addEventListener('change', () => fillPrices($('vis-model').value));
+    $('btn-vision').disabled = !cfg.apiKey;
+    renderCost();
+
+    function fillPrices(model) {
+      const p = vision.getPrice(model);
+      $('vis-price-in').value = p.in;
+      $('vis-price-out').value = p.out;
+    }
+
+    function renderCatalogStatus() {
+      const meta = catalog.getMeta();
+      const el = $('cat-status');
+      if (!meta) { el.className = 'status'; el.textContent = 'No catalog loaded.'; return; }
+      const when = new Date(meta.updatedAt).toLocaleString();
+      el.className = 'status ok';
+      el.textContent = `${meta.count} parts loaded, columns "${meta.columns.part}" to "${meta.columns.description}", updated ${when}`;
+    }
+
+    function renderCost() {
+      const s = vision.getCostSummary();
+      $('cost-total').textContent = '$' + s.totalUSD.toFixed(6);
+      $('cost-scans').textContent = s.scans;
+      $('cost-in').textContent = s.inputTokens.toLocaleString();
+      $('cost-out').textContent = s.outputTokens.toLocaleString();
+    }
+
+    // ── Scan ──
+    $('btn-scan').addEventListener('click', async () => {
+      $('scan-status').className = 'status';
+      $('scan-status').textContent = 'Opening camera…';
+      const r = await scanBarcode();
+      if (!r) { $('scan-status').textContent = 'Cancelled.'; return; }
+
+      lastFrame = r.frame; lastCode = r.code;
+      $('out-code').textContent = r.code;
+      $('btn-vision').disabled = !vision.getVisionConfig().apiKey;
+
+      const hit = catalog.lookupPart(r.code);
+      if (hit) {
+        $('out-desc').textContent = hit.description || '(blank in catalog)';
+        showSrc('catalog');
+        $('scan-status').className = 'status ok';
+        $('scan-status').textContent = 'Found in catalog.';
+      } else {
+        $('out-desc').textContent = '-';
+        showSrc(null);
+        if (vision.getVisionConfig().apiKey) {
+          await runVision(); // auto-fallback to Claude Vision
+        } else {
+          $('scan-status').className = 'status err';
+          $('scan-status').textContent = 'Not in catalog. Add it to your sheet, or set an API key to use Claude Vision.';
+        }
+      }
+    });
+
+    function showSrc(src) {
+      const tag = $('desc-src');
+      if (!src) { tag.hidden = true; return; }
+      tag.hidden = false;
+      tag.textContent = src === 'catalog' ? 'from catalog' : 'from Claude Vision';
+    }
+
+    // ── Vision ──
+    $('btn-vision').addEventListener('click', runVision);
+    async function runVision() {
+      if (!lastFrame) { $('scan-status').textContent = 'Scan a label first.'; return; }
+      $('scan-status').className = 'status';
+      $('scan-status').textContent = 'Asking Claude Vision…';
+      try {
+        const res = await vision.extractLabel(lastFrame, lastCode);
+        $('out-desc').textContent = res.description || '(Claude could not read a description)';
+        showSrc('vision');
+        renderCost();
+        $('scan-status').className = 'status ok';
+        $('scan-status').textContent = 'Read by Claude (' + res.model + ').';
+        $('cost-last').textContent =
+          `Last scan: ${res.usage.input_tokens} in / ${res.usage.output_tokens} out tokens, $${res.cost.toFixed(6)}.`;
+      } catch (e) {
+        $('scan-status').className = 'status err';
+        $('scan-status').textContent = e.message;
+      }
+    }
+
+    // ── Catalog controls ──
+    $('btn-cat-refresh').addEventListener('click', async () => {
+      catalog.setCatalogUrl($('cat-url').value);
+      $('cat-status').className = 'status';
+      $('cat-status').textContent = 'Fetching…';
+      try { await catalog.refreshFromUrl(); renderCatalogStatus(); }
+      catch (e) { $('cat-status').className = 'status err'; $('cat-status').textContent = e.message; }
+    });
+    $('btn-cat-import').addEventListener('click', () => $('cat-file').click());
+    $('cat-file').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      $('cat-status').className = 'status'; $('cat-status').textContent = 'Parsing ' + file.name + '…';
+      try { await catalog.importFile(file); renderCatalogStatus(); }
+      catch (err) { $('cat-status').className = 'status err'; $('cat-status').textContent = err.message; }
+      e.target.value = '';
+    });
+
+    // ── Vision controls ──
+    $('btn-vis-save').addEventListener('click', () => {
+      const model = $('vis-model').value;
+      vision.setVisionConfig({ apiKey: $('vis-key').value, model, enabled: !!$('vis-key').value });
+      vision.setPrice(model, $('vis-price-in').value, $('vis-price-out').value);
+      $('btn-vision').disabled = !$('vis-key').value;
+      $('scan-status').className = 'status ok';
+      $('scan-status').textContent = 'Saved Claude settings.';
+    });
+
+    $('btn-cost-reset').addEventListener('click', () => { vision.resetCost(); renderCost(); $('cost-last').textContent = ''; });
+  </script>
+</body>
+</html>
