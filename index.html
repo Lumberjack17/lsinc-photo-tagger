@@ -193,8 +193,7 @@
 <div id="modal-settings" class="modal-backdrop" hidden>
   <div class="modal settings-modal">
     <h2>Scanner Settings</h2>
-    <p id="settings-sync" style="font-size:.78rem;color:var(--muted);margin-bottom:6px;"></p>
-    <p style="margin-bottom:10px;"><a href="scanner-test.html" style="color:var(--accent);font-size:.85rem;">Open scanner test page (no login)</a></p>
+    <p id="settings-sync" style="font-size:.78rem;color:var(--muted);margin-bottom:10px;"></p>
 
     <section class="settings-section">
       <h3>Catalog (part number to description)</h3>
@@ -232,8 +231,6 @@
       <p id="settings-cost" class="settings-note"></p>
       <button class="btn-sm danger" id="settings-cost-reset">Reset cost counter</button>
     </section>
-
-    <p class="settings-note" style="color:#e0b452;">The API key is shared across all devices through Supabase. Anyone signed in can read it, so treat it as a shared secret and never commit it to the repo.</p>
 
     <div class="modal-actions" style="margin-top:14px;">
       <button class="btn-secondary" id="settings-cancel">Close</button>
