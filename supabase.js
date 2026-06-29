@@ -151,7 +151,7 @@ export async function isEmailApproved(email) {
 export async function approveEmail(email) {
   const { error } = await supabase
     .from('approved_emails')
-    .insert({ email, status: 'approved' });
+    .insert({ email, status: 'pending' });
   if (error && error.code !== '23505') throw error; // ignore duplicate
 }
 

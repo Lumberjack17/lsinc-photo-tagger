@@ -49,6 +49,12 @@ async function handleSession(session) {
     } catch (err) {
       console.error('Approval error:', err);
     }
+    // Newly registered — sign them out until admin approves
+    await signOut();
+    alert('Request submitted! An admin will activate your account. Sign in again once you\'ve been approved.');
+    isAuthorized = false;
+    updateAuthUI();
+    return;
   }
   isAuthorized = await isEmailApproved(session.user.email);
   const badge = document.getElementById('auth-badge');
