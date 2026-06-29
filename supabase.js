@@ -142,17 +142,37 @@ export async function getSession() {
 export async function isEmailApproved(email) {
   const { data } = await supabase
     .from('approved_emails')
-    .select('email')
+    .select('email, status')
     .eq('email', email)
     .maybeSingle();
-  return !!data;
+  return data?.status === 'approved';
 }
 
 export async function approveEmail(email) {
   const { error } = await supabase
     .from('approved_emails')
-    .insert({ email });
+    .insert({ email, status: 'approved' });
   if (error && error.code !== '23505') throw error; // ignore duplicate
+}
+
+export async function signInWithEmail(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+}
+
+export async function requestEmailAccess(email, password) {
+  // Create the auth account
+  const { error: signUpError } = await supabase.auth.signUp({ email, password });
+  if (signUpError && !signUpError.message.includes('already registered')) throw signUpError;
+
+  // Insert as pending — admin must change status to 'approved' in Supabase
+  const { error: insertError } = await supabase
+    .from('approved_emails')
+    .insert({ email, status: 'pending' });
+  if (insertError && insertError.code !== '23505') throw insertError;
+
+  // Sign back out — they shouldn't have access until approved
+  await supabase.auth.signOut();
 }
 
 export function onAuthStateChange(callback) {

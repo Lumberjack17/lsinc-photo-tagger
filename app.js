@@ -1,6 +1,7 @@
 import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
-  reorderPhotos, signInWithGoogle, signOut, getSession, isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
+  reorderPhotos, signInWithGoogle, signInWithEmail, requestEmailAccess, signOut, getSession,
+  isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
   getAppConfig, saveAppConfig, findPartIdByNumber,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
@@ -81,6 +82,58 @@ document.getElementById('btn-register-google').addEventListener('click', async (
     alert('Sign in failed: ' + err.message);
   }
 });
+// Toggle email login section
+document.getElementById('btn-show-email-login').addEventListener('click', () => {
+  const section = document.getElementById('email-login-section');
+  section.hidden = !section.hidden;
+});
+
+// Email sign in (returning approved users)
+document.getElementById('btn-email-signin').addEventListener('click', async () => {
+  const email = document.getElementById('input-email-login').value.trim();
+  const password = document.getElementById('input-password-login').value;
+  if (!email || !password) { alert('Enter your email and password.'); return; }
+  const btn = document.getElementById('btn-email-signin');
+  btn.textContent = 'Signing in…'; btn.disabled = true;
+  try {
+    await signInWithEmail(email, password);
+    // Check approval status after sign-in
+    const approved = await isEmailApproved(email);
+    if (!approved) {
+      await signOut();
+      alert('Your account is still awaiting admin approval. You will be notified when it is activated.');
+    } else {
+      document.getElementById('modal-login').hidden = true;
+    }
+  } catch (err) {
+    alert('Sign in failed: ' + err.message);
+  } finally {
+    btn.textContent = 'Sign In'; btn.disabled = false;
+  }
+});
+
+// Request access (new non-Google users)
+document.getElementById('btn-email-request').addEventListener('click', async () => {
+  const email = document.getElementById('input-email-login').value.trim();
+  const password = document.getElementById('input-password-login').value;
+  const key = document.getElementById('input-invite-key-email').value.trim();
+  if (!email || !password) { alert('Enter your work email and a password.'); return; }
+  if (password.length < 6) { alert('Password must be at least 6 characters.'); return; }
+  if (!key) { alert('Enter the company invite key.'); return; }
+  if (!validateInviteKey(key)) { alert('Incorrect invite key. Contact your admin.'); return; }
+  const btn = document.getElementById('btn-email-request');
+  btn.textContent = 'Submitting…'; btn.disabled = true;
+  try {
+    await requestEmailAccess(email, password);
+    alert('Request submitted! An admin will activate your account. Come back and sign in once you\'ve been approved.');
+    document.getElementById('modal-login').hidden = true;
+  } catch (err) {
+    alert('Request failed: ' + err.message);
+  } finally {
+    btn.textContent = 'Request Access'; btn.disabled = false;
+  }
+});
+
 document.getElementById('btn-logout').addEventListener('click', async () => {
   await signOut();
   isAuthorized = false;
