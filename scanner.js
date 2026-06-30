@@ -146,44 +146,59 @@ export function scanBarcode() {
 
     function setupCameraControls() {
       const track = stream.getVideoTracks()[0];
-      if (!track || !track.getCapabilities) return;
-      let caps = {};
-      try { caps = track.getCapabilities(); } catch (e) { return; }
+      if (!track) return;
 
-      // Continuous autofocus helps close-up reads.
-      const advanced = [];
-      if (caps.focusMode && caps.focusMode.includes('continuous')) advanced.push({ focusMode: 'continuous' });
-      if (advanced.length) track.applyConstraints({ advanced }).catch(() => {});
+      // Try autofocus via applyConstraints regardless of what getCapabilities reports —
+      // some Android browsers under-report focus capabilities.
+      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
 
-      if (caps.torch) {
-        const btn = overlay.querySelector('#scanner-torch');
-        btn.hidden = false;
-        let on = false;
-        btn.addEventListener('click', () => {
-          on = !on;
-          track.applyConstraints({ advanced: [{ torch: on }] }).catch(() => {});
-          btn.classList.toggle('active', on);
+      // Show torch button optimistically; hide it only if the constraint actually fails.
+      const torchBtn = overlay.querySelector('#scanner-torch');
+      torchBtn.hidden = false;
+      let torchOn = false;
+      torchBtn.addEventListener('click', () => {
+        torchOn = !torchOn;
+        track.applyConstraints({ advanced: [{ torch: torchOn }] }).then(() => {
+          torchBtn.classList.toggle('active', torchOn);
+        }).catch(() => {
+          // Device doesn't support torch — hide the button so it's not confusing.
+          torchOn = false;
+          torchBtn.hidden = true;
         });
-      }
-      if (caps.zoom && caps.zoom.max > caps.zoom.min) {
-        const slider = overlay.querySelector('#scanner-zoom');
-        slider.hidden = false;
-        slider.min = caps.zoom.min; slider.max = caps.zoom.max;
-        slider.step = caps.zoom.step || 0.1; slider.value = track.getSettings().zoom || caps.zoom.min;
-        slider.addEventListener('input', () => {
-          track.applyConstraints({ advanced: [{ zoom: parseFloat(slider.value) }] }).catch(() => {});
-        });
+      });
+
+      // Zoom slider — only show when the device reports zoom support.
+      if (track.getCapabilities) {
+        let caps = {};
+        try { caps = track.getCapabilities(); } catch (e) {}
+        if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+          const slider = overlay.querySelector('#scanner-zoom');
+          slider.hidden = false;
+          slider.min = caps.zoom.min; slider.max = caps.zoom.max;
+          slider.step = caps.zoom.step || 0.1; slider.value = track.getSettings().zoom || caps.zoom.min;
+          slider.addEventListener('input', () => {
+            track.applyConstraints({ advanced: [{ zoom: parseFloat(slider.value) }] }).catch(() => {});
+          });
+        }
       }
     }
 
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 2560 }, height: { ideal: 1440 } },
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 2560 },
+            height: { ideal: 1440 },
+            focusMode: 'continuous',       // request autofocus upfront (best-effort)
+            focusDistance: { ideal: 0 },   // close focus for labels
+          },
           audio: false,
         });
         video.srcObject = stream;
         await video.play();
+        // Let the camera settle before reading capabilities
+        await new Promise(r => setTimeout(r, 600));
         setupCameraControls();
       } catch (e) {
         hint.textContent = 'Camera unavailable, check permissions';
