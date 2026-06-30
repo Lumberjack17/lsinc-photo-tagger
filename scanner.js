@@ -148,9 +148,32 @@ export function scanBarcode() {
       const track = stream.getVideoTracks()[0];
       if (!track) return;
 
-      // Try autofocus via applyConstraints regardless of what getCapabilities reports —
-      // some Android browsers under-report focus capabilities.
+      // Try continuous autofocus; falls back gracefully if unsupported.
       track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+
+      // Tap-to-focus: tap the video to trigger a single-shot focus at that point,
+      // then return to continuous (or single-shot again if continuous isn't supported).
+      video.addEventListener('click', e => {
+        const rect = video.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
+        const constraint = { focusMode: 'single-shot' };
+        // pointsOfInterest is supported on some Android Chrome versions
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) constraint.pointsOfInterest = [{ x, y }];
+        track.applyConstraints({ advanced: [constraint] })
+          .then(() => {
+            // Brief visual feedback
+            const ring = document.createElement('div');
+            ring.style.cssText = `position:fixed;width:48px;height:48px;border:2px solid #fff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);left:${e.clientX}px;top:${e.clientY}px;opacity:1;transition:opacity 0.4s`;
+            overlay.appendChild(ring);
+            setTimeout(() => ring.style.opacity = '0', 100);
+            setTimeout(() => ring.remove(), 500);
+            // After focusing, try to resume continuous autofocus
+            setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}), 800);
+          })
+          .catch(() => {});
+      });
+      hint.textContent = 'Aim the box at the barcode — tap to focus';
 
       // Show torch button optimistically; hide it only if the constraint actually fails.
       const torchBtn = overlay.querySelector('#scanner-torch');
