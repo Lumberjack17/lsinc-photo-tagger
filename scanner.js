@@ -161,9 +161,9 @@ export function scanBarcode() {
         track.applyConstraints({ advanced: [{ torch: torchOn }] }).then(() => {
           torchBtn.classList.toggle('active', torchOn);
         }).catch(() => {
-          // Device doesn't support torch — hide the button so it's not confusing.
-          torchOn = false;
-          torchBtn.hidden = true;
+          // Constraint rejected — toggle back but keep button visible.
+          torchOn = !torchOn;
+          torchBtn.textContent = 'Light (N/A)';
         });
       });
 
@@ -190,8 +190,6 @@ export function scanBarcode() {
             facingMode: 'environment',
             width: { ideal: 2560 },
             height: { ideal: 1440 },
-            focusMode: 'continuous',       // request autofocus upfront (best-effort)
-            focusDistance: { ideal: 0 },   // close focus for labels
           },
           audio: false,
         });

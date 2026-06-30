@@ -1,4 +1,4 @@
-const CACHE = 'photo-tagger-v12';
+const CACHE = 'photo-tagger-v13';
 
 // App shell — all local assets that make the UI work offline
 const BASE = '/lsinc-photo-tagger';
