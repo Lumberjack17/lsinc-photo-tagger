@@ -977,17 +977,24 @@ document.getElementById('btn-detail-docx').addEventListener('click', async () =>
   }
 });
 
-document.getElementById('btn-export-docx').addEventListener('click', async () => {
+document.getElementById('btn-export-docx').addEventListener('click', async function () {
   const parts = activePrinterFilter
     ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
     : allParts;
   if (!parts.length) { alert('No parts to export.'); return; }
+  const btn = this;
+  const orig = btn.textContent;
+  btn.textContent = 'Building…';
+  btn.disabled = true;
   try {
     const blob = await buildAllDocx(parts);
     const filename = activePrinterFilter ? `${activePrinterFilter}-parts.docx` : 'all-parts.docx';
     downloadBlob(blob, filename);
   } catch (e) {
     alert('Export failed: ' + e.message);
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
   }
 });
 
