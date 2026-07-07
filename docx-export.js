@@ -140,28 +140,29 @@ function docxImage(relId, id, cx, cy) {
 
 const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
-// Read JPEG dimensions from its SOF marker.
-function jpegDims(buf) {
-  let i = 2;
-  while (i < buf.length) {
-    if (buf[i] !== 0xff) { i++; continue; }
-    const m = buf[i + 1];
-    if (m === 0xff) { i++; continue; }
-    if (m === 0xd8 || m === 0xd9 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
-    const len = (buf[i + 2] << 8) | buf[i + 3];
-    const isSOF = m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc;
-    if (isSOF) return { w: (buf[i + 7] << 8) | buf[i + 8], h: (buf[i + 5] << 8) | buf[i + 6] };
-    i += 2 + len;
-  }
-  return { w: 1200, h: 900 };
-}
-
-// Fetch an image URL as a Uint8Array (JPEG bytes).
-async function fetchJpeg(url) {
-  // Strip cache-bust query param for the fetch, keep original URL intact
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
-  return new Uint8Array(await res.arrayBuffer());
+// Load a URL via <img> + canvas → JPEG bytes + dimensions.
+// Uses the same approach as the PDF exporter so CORS isn't a problem.
+function loadImageAsJpeg(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
+        blob.arrayBuffer().then(buf => resolve({
+          bytes: new Uint8Array(buf),
+          w: img.naturalWidth,
+          h: img.naturalHeight,
+        })).catch(reject);
+      }, 'image/jpeg', 0.92);
+    };
+    img.onerror = () => reject(new Error('Image failed to load'));
+    img.src = url;
+  });
 }
 
 // ── Core builder ──────────────────────────────────────────────────────────────
@@ -189,14 +190,13 @@ async function buildDocx(parts) {
     for (const photo of part.photos) {
       imgIdx++;
       try {
-        const jpeg = await fetchJpeg(photo.image_url);
-        const { w, h } = jpegDims(jpeg);
+        const { bytes, w, h } = await loadImageAsJpeg(photo.image_url);
         const scale = Math.min(1, MAX_W_EMU / (w * 9525));
         const cx = Math.round(w * 9525 * scale);
         const cy = Math.round(h * 9525 * scale);
         const mediaName = `image${imgIdx}.jpeg`;
         const relId = `rIdImg${imgIdx}`;
-        entries.push({ name: `word/media/${mediaName}`, data: jpeg });
+        entries.push({ name: `word/media/${mediaName}`, data: bytes });
         rels.push(
           `<Relationship Id="${relId}" ` +
           `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ` +
