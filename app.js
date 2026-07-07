@@ -8,6 +8,7 @@ import { PhotoEditor } from './editor.js';
 import { scanBarcode } from './scanner.js';
 import * as catalog from './catalog.js';
 import * as vision from './vision.js';
+import { buildPartDocx, buildAllDocx, downloadBlob } from './docx-export.js';
 import * as outbox from './outbox.js';
 
 const PRINTERS = ['PeriOne', 'PeriQ360', 'Perivallo360m', 'PeriH'];
@@ -965,6 +966,30 @@ async function addPdfImage(doc, photo, x, y, cellW, cellH) {
     img.src = photo.image_url;
   });
 }
+
+// ── DOCX ───────────────────────────────────────────────────────────────────
+document.getElementById('btn-detail-docx').addEventListener('click', async () => {
+  try {
+    const blob = await buildPartDocx(currentPart);
+    downloadBlob(blob, `${currentPart.part_number}.docx`);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+});
+
+document.getElementById('btn-export-docx').addEventListener('click', async () => {
+  const parts = activePrinterFilter
+    ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
+    : allParts;
+  if (!parts.length) { alert('No parts to export.'); return; }
+  try {
+    const blob = await buildAllDocx(parts);
+    const filename = activePrinterFilter ? `${activePrinterFilter}-parts.docx` : 'all-parts.docx';
+    downloadBlob(blob, filename);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+});
 
 // ── Search & Nav ───────────────────────────────────────────────────────────
 document.getElementById('input-search').addEventListener('input', applyFilters);
