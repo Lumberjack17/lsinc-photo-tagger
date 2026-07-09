@@ -968,12 +968,17 @@ async function addPdfImage(doc, photo, x, y, cellW, cellH) {
 }
 
 // ── DOCX ───────────────────────────────────────────────────────────────────
-document.getElementById('btn-detail-docx').addEventListener('click', async () => {
+document.getElementById('btn-detail-docx').addEventListener('click', async function () {
+  const quality = document.getElementById('select-detail-docx-quality').value;
+  const orig = this.textContent;
+  this.textContent = 'Building…'; this.disabled = true;
   try {
-    const blob = await buildPartDocx(currentPart);
+    const blob = await buildPartDocx(currentPart, quality);
     downloadBlob(blob, `${currentPart.part_number}.docx`);
   } catch (e) {
     alert('Export failed: ' + e.message);
+  } finally {
+    this.textContent = orig; this.disabled = false;
   }
 });
 
@@ -982,19 +987,17 @@ document.getElementById('btn-export-docx').addEventListener('click', async funct
     ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
     : allParts;
   if (!parts.length) { alert('No parts to export.'); return; }
-  const btn = this;
-  const orig = btn.textContent;
-  btn.textContent = 'Building…';
-  btn.disabled = true;
+  const quality = document.getElementById('select-docx-quality').value;
+  const orig = this.textContent;
+  this.textContent = 'Building…'; this.disabled = true;
   try {
-    const blob = await buildAllDocx(parts);
+    const blob = await buildAllDocx(parts, quality);
     const filename = activePrinterFilter ? `${activePrinterFilter}-parts.docx` : 'all-parts.docx';
     downloadBlob(blob, filename);
   } catch (e) {
     alert('Export failed: ' + e.message);
   } finally {
-    btn.textContent = orig;
-    btn.disabled = false;
+    this.textContent = orig; this.disabled = false;
   }
 });
 

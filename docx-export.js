@@ -141,24 +141,25 @@ function docxImage(relId, id, cx, cy) {
 const PAGE_BREAK = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
 // Load a URL via <img> + canvas → JPEG bytes + dimensions.
-// Uses the same approach as the PDF exporter so CORS isn't a problem.
-function loadImageAsJpeg(url) {
+// maxPx caps the longer edge (keeps aspect ratio). quality is 0–1 JPEG quality.
+function loadImageAsJpeg(url, { maxPx = 1920, quality = 0.88 } = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       canvas.toBlob(blob => {
         if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
         blob.arrayBuffer().then(buf => resolve({
-          bytes: new Uint8Array(buf),
-          w: img.naturalWidth,
-          h: img.naturalHeight,
+          bytes: new Uint8Array(buf), w, h,
         })).catch(reject);
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', quality);
     };
     img.onerror = () => reject(new Error('Image failed to load'));
     img.src = url;
@@ -167,7 +168,7 @@ function loadImageAsJpeg(url) {
 
 // ── Core builder ──────────────────────────────────────────────────────────────
 // parts: array of { part_number, description, printers, photos: [{ image_url, machine_label }] }
-async function buildDocx(parts) {
+async function buildDocx(parts, imgOpts) {
   const enc = new TextEncoder();
   const entries = [];
   const rels = [];
@@ -190,7 +191,7 @@ async function buildDocx(parts) {
     for (const photo of part.photos) {
       imgIdx++;
       try {
-        const { bytes, w, h } = await loadImageAsJpeg(photo.image_url);
+        const { bytes, w, h } = await loadImageAsJpeg(photo.image_url, imgOpts);
         const scale = Math.min(1, MAX_W_EMU / (w * 9525));
         const cx = Math.round(w * 9525 * scale);
         const cy = Math.round(h * 9525 * scale);
@@ -256,12 +257,15 @@ async function buildDocx(parts) {
   return makeZip(entries);
 }
 
-export function buildPartDocx(part) {
-  return buildDocx([part]);
+// quality: 'full' (1920px, 0.88) or 'compressed' (900px, 0.70)
+export function buildPartDocx(part, quality = 'full') {
+  const opts = quality === 'compressed' ? { maxPx: 900, quality: 0.70 } : { maxPx: 1920, quality: 0.88 };
+  return buildDocx([part], opts);
 }
 
-export function buildAllDocx(parts) {
-  return buildDocx(parts);
+export function buildAllDocx(parts, quality = 'full') {
+  const opts = quality === 'compressed' ? { maxPx: 900, quality: 0.70 } : { maxPx: 1920, quality: 0.88 };
+  return buildDocx(parts, opts);
 }
 
 export function downloadBlob(blob, filename) {
