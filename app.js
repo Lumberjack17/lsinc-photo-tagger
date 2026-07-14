@@ -156,6 +156,12 @@ function showView(id) {
   document.getElementById('btn-open-camera').hidden = !isAuthorized || id === 'view-part-detail';
 }
 
+function buildYearMonth(monthId, yearId) {
+  const m = document.getElementById(monthId).value;
+  const y = document.getElementById(yearId).value;
+  return m && y ? `${y}-${m}` : null;
+}
+
 function fmtMonth(ym) {
   if (!ym) return '';
   const [y, m] = ym.split('-');
@@ -412,7 +418,7 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
       description: document.getElementById('input-description').value.trim(),
       printers: getCheckedPrinters('preview-printers'),
       qty_on_hand: document.getElementById('input-qty').value !== '' ? parseInt(document.getElementById('input-qty').value, 10) : null,
-      qty_counted_at: document.getElementById('input-qty-date').value || null,
+      qty_counted_at: buildYearMonth('input-qty-month', 'input-qty-year'),
     },
     partNumber,
     imageDataUrl: capturedImageDataUrl,
@@ -666,7 +672,9 @@ document.getElementById('btn-back-gallery').addEventListener('click', () => {
 // ── Inventory Count ────────────────────────────────────────────────────────
 function openQtyModal() {
   document.getElementById('modal-qty-value').value = currentPart.qty_on_hand ?? '';
-  document.getElementById('modal-qty-date').value = currentPart.qty_counted_at || '';
+  const [y, m] = (currentPart.qty_counted_at || '').split('-');
+  document.getElementById('modal-qty-month').value = m || '';
+  document.getElementById('modal-qty-year').value = y || '';
   document.getElementById('modal-update-qty').hidden = false;
 }
 document.getElementById('btn-update-qty').addEventListener('click', openQtyModal);
@@ -677,7 +685,7 @@ document.getElementById('btn-update-qty-cancel').addEventListener('click', () =>
 document.getElementById('btn-update-qty-save').addEventListener('click', async () => {
   const qtyVal = document.getElementById('modal-qty-value').value;
   const qty = qtyVal !== '' ? parseInt(qtyVal, 10) : null;
-  const counted_at = document.getElementById('modal-qty-date').value || null;
+  const counted_at = buildYearMonth('modal-qty-month', 'modal-qty-year');
   try {
     await updatePartQty(currentPart.id, qty, counted_at);
     currentPart.qty_on_hand = qty;
@@ -686,7 +694,7 @@ document.getElementById('btn-update-qty-save').addEventListener('click', async (
     const idx = allParts.findIndex(p => p.id === currentPart.id);
     if (idx !== -1) { allParts[idx].qty_on_hand = qty; allParts[idx].qty_counted_at = counted_at; }
     renderPartDetail();
-    renderGallery();
+    applyFilters();
     document.getElementById('modal-update-qty').hidden = true;
   } catch (e) {
     alert('Save failed: ' + e.message);
