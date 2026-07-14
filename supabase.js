@@ -58,13 +58,27 @@ export async function findPartIdByNumber(part_number) {
   return data && data.length ? data[0].id : null;
 }
 
-export async function createPart({ part_number, description, printers }) {
+export async function createPart({ part_number, description, printers, qty_on_hand, qty_counted_at }) {
   const { data, error } = await supabase
     .from('parts')
-    .insert({ part_number, description: description || '', printers: printers || [] })
+    .insert({
+      part_number,
+      description: description || '',
+      printers: printers || [],
+      qty_on_hand: qty_on_hand ?? null,
+      qty_counted_at: qty_counted_at || null,
+    })
     .select().single();
   if (error) throw error;
   return data;
+}
+
+export async function updatePartQty(partId, qty_on_hand, qty_counted_at) {
+  const { error } = await supabase
+    .from('parts')
+    .update({ qty_on_hand, qty_counted_at })
+    .eq('id', partId);
+  if (error) throw error;
 }
 
 export async function updatePart(partId, updates) {

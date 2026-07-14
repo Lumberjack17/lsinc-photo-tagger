@@ -2,7 +2,7 @@ import {
   getAllParts, createPart, updatePart, deletePart, addPhotoToPart, deletePartPhoto, updatePartPhoto,
   reorderPhotos, signInWithGoogle, signInWithEmail, requestEmailAccess, signOut, getSession,
   isEmailApproved, approveEmail, validateInviteKey, onAuthStateChange,
-  getAppConfig, saveAppConfig, findPartIdByNumber,
+  getAppConfig, saveAppConfig, findPartIdByNumber, updatePartQty,
 } from './supabase.js';
 import { PhotoEditor } from './editor.js';
 import { scanBarcode } from './scanner.js';
@@ -152,6 +152,15 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.hidden = true);
   document.getElementById(id).hidden = false;
+  // "New Photo" in nav is redundant on the part detail page (has its own "+ Add Photo")
+  document.getElementById('btn-open-camera').hidden = !isAuthorized || id === 'view-part-detail';
+}
+
+function fmtMonth(ym) {
+  if (!ym) return '';
+  const [y, m] = ym.split('-');
+  const name = new Date(+y, +m - 1).toLocaleString('default', { month: 'long' });
+  return `${name} ${y}`;
 }
 
 // ── Printer checkbox helpers ───────────────────────────────────────────────
@@ -220,6 +229,14 @@ async function startScanFlow() {
   if (!result) { // user cancelled, end the loop and go back
     scanLoop = false;
     showView(currentPart ? 'view-part-detail' : 'view-gallery');
+    return;
+  }
+
+  // If the part is already in the database, go straight to its detail page.
+  const existingPart = allParts.find(p => p.part_number === result.code);
+  if (existingPart) {
+    scanLoop = false;
+    openPartDetail(existingPart);
     return;
   }
 
@@ -394,6 +411,8 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
       part_number: partNumber,
       description: document.getElementById('input-description').value.trim(),
       printers: getCheckedPrinters('preview-printers'),
+      qty_on_hand: document.getElementById('input-qty').value !== '' ? parseInt(document.getElementById('input-qty').value, 10) : null,
+      qty_counted_at: document.getElementById('input-qty-date').value || null,
     },
     partNumber,
     imageDataUrl: capturedImageDataUrl,
@@ -564,6 +583,7 @@ function renderGallery(parts) {
         <div class="part-number-label">${escHtml(part.part_number)}</div>
         ${part.printers?.length ? `<div class="printer-list">${part.printers.map(p => `<span class="printer-badge">${escHtml(p)}</span>`).join('')}</div>` : ''}
         ${part.description ? `<p class="desc">${escHtml(part.description)}</p>` : ''}
+        ${part.qty_on_hand != null ? `<div class="qty-badge">📦 ${part.qty_on_hand}${part.qty_counted_at ? ` <span class="qty-date">· ${fmtMonth(part.qty_counted_at)}</span>` : ''}</div>` : ''}
       </div>`;
     card.addEventListener('click', () => openPartDetail(part));
     grid.appendChild(card);
@@ -589,6 +609,18 @@ function renderPartDetail() {
 
   const printerEl = document.getElementById('detail-printers');
   printerEl.innerHTML = (part.printers || []).map(p => `<span class="printer-badge">${escHtml(p)}</span>`).join('');
+
+  const qtyEl = document.getElementById('detail-qty');
+  const addQtyBtn = document.getElementById('btn-add-qty');
+  if (part.qty_on_hand != null) {
+    document.getElementById('detail-qty-value').textContent =
+      `${part.qty_on_hand} in stock${part.qty_counted_at ? ' · ' + fmtMonth(part.qty_counted_at) : ''}`;
+    qtyEl.hidden = false;
+    addQtyBtn.hidden = true;
+  } else {
+    qtyEl.hidden = true;
+    addQtyBtn.hidden = !isAuthorized;
+  }
 
   const grid = document.getElementById('detail-photos-grid');
   grid.innerHTML = '';
@@ -629,6 +661,36 @@ function renderPartDetail() {
 document.getElementById('btn-back-gallery').addEventListener('click', () => {
   currentPart = null;
   showView('view-gallery');
+});
+
+// ── Inventory Count ────────────────────────────────────────────────────────
+function openQtyModal() {
+  document.getElementById('modal-qty-value').value = currentPart.qty_on_hand ?? '';
+  document.getElementById('modal-qty-date').value = currentPart.qty_counted_at || '';
+  document.getElementById('modal-update-qty').hidden = false;
+}
+document.getElementById('btn-update-qty').addEventListener('click', openQtyModal);
+document.getElementById('btn-add-qty').addEventListener('click', openQtyModal);
+document.getElementById('btn-update-qty-cancel').addEventListener('click', () => {
+  document.getElementById('modal-update-qty').hidden = true;
+});
+document.getElementById('btn-update-qty-save').addEventListener('click', async () => {
+  const qtyVal = document.getElementById('modal-qty-value').value;
+  const qty = qtyVal !== '' ? parseInt(qtyVal, 10) : null;
+  const counted_at = document.getElementById('modal-qty-date').value || null;
+  try {
+    await updatePartQty(currentPart.id, qty, counted_at);
+    currentPart.qty_on_hand = qty;
+    currentPart.qty_counted_at = counted_at;
+    // Update allParts so the gallery card reflects the change too
+    const idx = allParts.findIndex(p => p.id === currentPart.id);
+    if (idx !== -1) { allParts[idx].qty_on_hand = qty; allParts[idx].qty_counted_at = counted_at; }
+    renderPartDetail();
+    renderGallery();
+    document.getElementById('modal-update-qty').hidden = true;
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  }
 });
 
 document.getElementById('btn-detail-add-photo').addEventListener('click', () => {

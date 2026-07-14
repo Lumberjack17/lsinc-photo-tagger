@@ -95,6 +95,16 @@
         <label for="input-description">Description (optional)</label>
         <textarea id="input-description" rows="2" placeholder="Notes about this part…"></textarea>
       </div>
+      <div class="qty-row">
+        <div>
+          <label for="input-qty">Qty in Inventory (optional)</label>
+          <input type="number" id="input-qty" min="0" placeholder="e.g. 47" autocomplete="off">
+        </div>
+        <div>
+          <label for="input-qty-date">Date Counted</label>
+          <input type="month" id="input-qty-date">
+        </div>
+      </div>
     </div>
 
     <div>
@@ -130,6 +140,12 @@
       <h2 id="detail-part-number"></h2>
       <div id="detail-printers" class="printer-list"></div>
       <p id="detail-description" class="desc"></p>
+      <div id="detail-qty" class="detail-qty" hidden>
+        <span class="qty-icon">📦</span>
+        <span id="detail-qty-value"></span>
+        <button class="btn-sm" id="btn-update-qty">Update Count</button>
+      </div>
+      <button class="btn-sm" id="btn-add-qty" hidden>📦 Add Inventory Count</button>
     </div>
     <div class="part-detail-actions">
       <button class="btn-primary" id="btn-detail-add-photo">+ Add Photo</button>
@@ -282,6 +298,25 @@
     </div>
 
     <button class="btn-secondary" id="btn-login-cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ── Update Inventory Count Modal ── -->
+<div id="modal-update-qty" class="modal-backdrop" hidden>
+  <div class="modal">
+    <h2>📦 Inventory Count</h2>
+    <div>
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Quantity on Hand</label>
+      <input type="number" id="modal-qty-value" min="0" placeholder="e.g. 47" autocomplete="off">
+    </div>
+    <div style="margin-top:10px;">
+      <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:4px;">Date Counted</label>
+      <input type="month" id="modal-qty-date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="btn-update-qty-cancel">Cancel</button>
+      <button class="btn-primary" id="btn-update-qty-save">Save</button>
+    </div>
   </div>
 </div>
 

@@ -71,6 +71,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .printer-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
 .printer-badge { background: #1e2a1e; color: #6fcf6f; border: 1px solid #2d4a2d; border-radius: 5px; padding: 2px 8px; font-size: 0.75rem; font-weight: 600; }
 .desc { font-size: 0.83rem; color: var(--muted); line-height: 1.4; margin-top: 4px; }
+.qty-badge { font-size: 0.8rem; color: #7ecfb0; margin-top: 6px; }
+.qty-badge .qty-date { color: var(--muted); }
+.qty-row { display: flex; gap: 12px; }
+.qty-row > div { flex: 1; }
+.detail-qty { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.9rem; color: #7ecfb0; flex-wrap: wrap; }
+.qty-icon { font-size: 1rem; }
 
 /* ── Part Detail view ── */
 .part-detail-header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #2a2a35; }
