@@ -999,12 +999,8 @@ async function exportPdfForPart(part) {
 }
 
 document.getElementById('btn-export-pdf').addEventListener('click', async () => {
-  const filtered = activePrinterFilter
-    ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
-    : allParts;
-  if (!filtered.length) { alert('No parts to export.'); return; }
-
-  const parts = partsForExport(filtered, activePrinterFilter);
+  const parts = partsForExport(allParts, activePrinterFilter);
+  if (!parts.length) { alert('No parts to export.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   for (let i = 0; i < parts.length; i++) {
@@ -1113,11 +1109,8 @@ document.getElementById('btn-detail-docx').addEventListener('click', async funct
 });
 
 document.getElementById('btn-export-docx').addEventListener('click', async function () {
-  const filtered = activePrinterFilter
-    ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
-    : allParts;
-  if (!filtered.length) { alert('No parts to export.'); return; }
-  const parts = partsForExport(filtered, activePrinterFilter);
+  const parts = partsForExport(allParts, activePrinterFilter);
+  if (!parts.length) { alert('No parts to export.'); return; }
   const quality = document.getElementById('select-docx-quality').value;
   const orig = this.textContent;
   this.textContent = 'Building…'; this.disabled = true;
