@@ -170,6 +170,23 @@ function fmtMonth(ym) {
 }
 
 // ── Printer checkbox helpers ───────────────────────────────────────────────
+const PHOTO_TAGS = ['Part', ...PRINTERS];
+
+function renderPhotoTagCheckboxes(containerId, selected = []) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  PHOTO_TAGS.forEach(tag => {
+    const label = document.createElement('label');
+    label.className = 'printer-option';
+    label.innerHTML = `<input type="checkbox" value="${tag}" ${selected.includes(tag) ? 'checked' : ''}><span>${tag}</span>`;
+    el.appendChild(label);
+  });
+}
+
+function getCheckedPhotoTags(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)].map(cb => cb.value);
+}
+
 function renderPrinterCheckboxes(containerId, selected = []) {
   const el = document.getElementById(containerId);
   el.innerHTML = '';
@@ -366,6 +383,7 @@ function openPreview() {
     renderPrinterCheckboxes('preview-printers');
     document.getElementById('input-description').value = '';
   }
+  renderPhotoTagCheckboxes('preview-photo-tags');
 
   // Pre-fill from a label scan (kept across Retake until the capture ends).
   if (scannedData && !targetPartId) {
@@ -424,6 +442,7 @@ document.getElementById('btn-burn-save').addEventListener('click', async () => {
     imageDataUrl: capturedImageDataUrl,
     machine_label: machineLabel,
     position,
+    tags: getCheckedPhotoTags('preview-photo-tags'),
   };
 
   let savedOffline = false;
@@ -487,6 +506,7 @@ async function commitSave(p) {
     imageDataUrl: p.imageDataUrl,
     machine_label: p.machine_label,
     position: p.position,
+    tags: p.tags || [],
   });
 }
 
@@ -645,6 +665,7 @@ function renderPartDetail() {
         <div class="card-img-overlay">🔍 Preview</div>
       </div>
       ${photo.machine_label ? `<div class="photo-machine-label">${escHtml(photo.machine_label)}</div>` : ''}
+      ${(photo.tags || []).length ? `<div class="photo-tag-row">${photo.tags.map(t => `<span class="photo-tag" data-tag="${escHtml(t)}">${escHtml(t)}</span>`).join('')}</div>` : ''}
       ${isAuthorized ? `<div class="photo-card-actions">
         <button class="btn-sm btn-photo-up" data-id="${photo.id}" title="Move left">◀</button>
         <button class="btn-sm btn-photo-down" data-id="${photo.id}" title="Move right">▶</button>
@@ -825,6 +846,7 @@ function openEditPhotoLabel(photo) {
   currentEditingPhoto = photo;
   document.getElementById('edit-photo-label-input').value = photo.machine_label || '';
   document.getElementById('edit-photo-position-select').value = photo.position || 'bottom-left';
+  renderPhotoTagCheckboxes('edit-photo-tags', photo.tags || []);
   document.getElementById('modal-edit-photo-label').hidden = false;
 }
 
@@ -848,6 +870,7 @@ document.getElementById('btn-edit-photo-label-save').addEventListener('click', a
     });
     await updatePartPhoto(photo.id, currentPart.id, currentPart.part_number, {
       imageDataUrl: dataUrl, machine_label, position,
+      tags: getCheckedPhotoTags('edit-photo-tags'),
     });
     document.getElementById('modal-edit-photo-label').hidden = true;
     currentEditingPhoto = null;
@@ -939,17 +962,11 @@ document.getElementById('modal-lightbox').addEventListener('click', e => {
 //   • photos whose label mentions the active printer
 function filterPhotosForPrinter(photos, printer) {
   if (!printer) return photos;
-  const key = printer.toLowerCase();
   return photos.filter(p => {
-    if (!p.machine_label || !p.machine_label.trim()) return true; // no label = base photo
-    const label = p.machine_label.toLowerCase();
-    // Label contains the full filter name (e.g. "periq360" in "installed in periq360 bay 2")
-    if (label.includes(key)) return true;
-    // Short label prefix match: "periq" label matches "periq360" filter but NOT "perione"
-    // Extract the first peri-word from the label and check if the filter KEY starts with it
-    const labelWord = label.match(/peri[a-z0-9]*/)?.[0];
-    if (labelWord && key.startsWith(labelWord)) return true;
-    return false;
+    const tags = p.tags || [];
+    if (tags.length === 0) return true;          // untagged = legacy photo, always include
+    if (tags.includes('Part')) return true;      // "Part" tag = show in all exports
+    return tags.includes(printer);               // exact printer tag match
   });
 }
 

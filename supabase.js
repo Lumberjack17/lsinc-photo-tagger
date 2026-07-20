@@ -106,7 +106,7 @@ export async function deletePart(partId) {
 
 // ── Part Photos ────────────────────────────────────────────────────────────
 
-export async function addPhotoToPart(partId, partNumber, { imageDataUrl, machine_label, position }) {
+export async function addPhotoToPart(partId, partNumber, { imageDataUrl, machine_label, position, tags }) {
   const strings = [partNumber];
   if (machine_label?.trim()) strings.push(machine_label.trim());
   const burned = await burnStringsOntoImage(imageDataUrl, strings, { position });
@@ -126,6 +126,7 @@ export async function addPhotoToPart(partId, partNumber, { imageDataUrl, machine
       original_url: originalUrl,
       machine_label: machine_label || '',
       position,
+      tags: tags || [],
     })
     .select().single();
   if (error) throw error;
@@ -216,7 +217,7 @@ export async function saveAppConfig(patch) {
   return merged;
 }
 
-export async function updatePartPhoto(photoId, partId, partNumber, { imageDataUrl, machine_label, position }) {
+export async function updatePartPhoto(photoId, partId, partNumber, { imageDataUrl, machine_label, position, tags }) {
   const strings = [partNumber];
   if (machine_label?.trim()) strings.push(machine_label.trim());
   const burned = await burnStringsOntoImage(imageDataUrl, strings, { position });
@@ -226,7 +227,7 @@ export async function updatePartPhoto(photoId, partId, partNumber, { imageDataUr
   ]);
   const { error } = await supabase
     .from('part_photos')
-    .update({ image_url: burnedUrl, original_url: originalUrl, machine_label: machine_label || '', position })
+    .update({ image_url: burnedUrl, original_url: originalUrl, machine_label: machine_label || '', position, tags: tags || [] })
     .eq('id', photoId);
   if (error) throw error;
 }
