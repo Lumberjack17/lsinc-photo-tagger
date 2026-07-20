@@ -940,7 +940,11 @@ document.getElementById('modal-lightbox').addEventListener('click', e => {
 function filterPhotosForPrinter(photos, printer) {
   if (!printer) return photos;
   const key = printer.toLowerCase();
-  return photos.filter(p => !p.machine_label || p.machine_label.toLowerCase().includes(key));
+  return photos.filter(p => {
+    if (!p.machine_label) return true; // unlabeled = base photo, always include
+    const label = p.machine_label.toLowerCase();
+    return label.includes(key) || key.includes(label.match(/peri\w*/)?.[0] ?? '\x00');
+  });
 }
 
 function partsForExport(parts, printer) {
