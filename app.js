@@ -933,19 +933,35 @@ document.getElementById('modal-lightbox').addEventListener('click', e => {
 });
 
 // ── PDF ────────────────────────────────────────────────────────────────────
+
+// When a printer filter is active, only export:
+//   • photos with no machine label (the base/cover part photo)
+//   • photos whose label mentions the active printer
+function filterPhotosForPrinter(photos, printer) {
+  if (!printer) return photos;
+  const key = printer.toLowerCase();
+  return photos.filter(p => !p.machine_label || p.machine_label.toLowerCase().includes(key));
+}
+
+function partsForExport(parts, printer) {
+  return parts.map(p => ({ ...p, photos: filterPhotosForPrinter(p.photos, printer) }))
+              .filter(p => p.photos.length);
+}
+
 async function exportPdfForPart(part) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  await renderPartPage(doc, part, false);
+  await renderPartPage(doc, partsForExport([part], activePrinterFilter)[0] ?? part, false);
   doc.save(`${part.part_number}.pdf`);
 }
 
 document.getElementById('btn-export-pdf').addEventListener('click', async () => {
-  const parts = activePrinterFilter
+  const filtered = activePrinterFilter
     ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
     : allParts;
-  if (!parts.length) { alert('No parts to export.'); return; }
+  if (!filtered.length) { alert('No parts to export.'); return; }
 
+  const parts = partsForExport(filtered, activePrinterFilter);
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   for (let i = 0; i < parts.length; i++) {
@@ -1043,7 +1059,8 @@ document.getElementById('btn-detail-docx').addEventListener('click', async funct
   const orig = this.textContent;
   this.textContent = 'Building…'; this.disabled = true;
   try {
-    const blob = await buildPartDocx(currentPart, quality);
+    const exportPart = partsForExport([currentPart], activePrinterFilter)[0] ?? currentPart;
+    const blob = await buildPartDocx(exportPart, quality);
     downloadBlob(blob, `${currentPart.part_number}.docx`);
   } catch (e) {
     alert('Export failed: ' + e.message);
@@ -1053,10 +1070,11 @@ document.getElementById('btn-detail-docx').addEventListener('click', async funct
 });
 
 document.getElementById('btn-export-docx').addEventListener('click', async function () {
-  const parts = activePrinterFilter
+  const filtered = activePrinterFilter
     ? allParts.filter(p => p.printers?.includes(activePrinterFilter))
     : allParts;
-  if (!parts.length) { alert('No parts to export.'); return; }
+  if (!filtered.length) { alert('No parts to export.'); return; }
+  const parts = partsForExport(filtered, activePrinterFilter);
   const quality = document.getElementById('select-docx-quality').value;
   const orig = this.textContent;
   this.textContent = 'Building…'; this.disabled = true;
