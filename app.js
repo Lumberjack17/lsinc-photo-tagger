@@ -604,8 +604,9 @@ function renderGallery(parts) {
   empty.hidden = true;
 
   parts.forEach(part => {
-    const thumb = part.photos[0]?.image_url || '';
-    const count = part.photos.length;
+    const visiblePhotos = filterPhotosForPrinter(part.photos, activePrinterFilter);
+    const thumb = visiblePhotos[0]?.image_url || part.photos[0]?.image_url || '';
+    const count = visiblePhotos.length;
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
