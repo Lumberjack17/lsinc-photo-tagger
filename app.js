@@ -562,7 +562,11 @@ async function loadGallery() {
 function renderFilterBar() {
   const bar = document.getElementById('printer-filter-bar');
   bar.innerHTML = '';
-  const chips = [{ label: 'All', value: null }, ...PRINTERS.map(p => ({ label: p, value: p }))];
+  const chips = [
+    { label: 'All', value: null },
+    { label: 'Parts', value: 'Parts' },
+    ...PRINTERS.map(p => ({ label: p, value: p })),
+  ];
   chips.forEach(({ label, value }) => {
     const btn = document.createElement('button');
     btn.className = 'filter-chip' + (activePrinterFilter === value ? ' active' : '');
@@ -575,7 +579,12 @@ function renderFilterBar() {
 function applyFilters() {
   const q = document.getElementById('input-search').value.toLowerCase();
   let filtered = allParts;
-  if (activePrinterFilter) filtered = filtered.filter(p => p.printers?.includes(activePrinterFilter));
+  if (activePrinterFilter === 'Parts') {
+    // Show parts that have at least one photo tagged "Part"
+    filtered = filtered.filter(p => p.photos.some(ph => (ph.tags || []).includes('Part')));
+  } else if (activePrinterFilter) {
+    filtered = filtered.filter(p => p.printers?.includes(activePrinterFilter));
+  }
   if (q) filtered = filtered.filter(p =>
     p.part_number.toLowerCase().includes(q) ||
     (p.description || '').toLowerCase().includes(q) ||
@@ -651,12 +660,14 @@ function renderPartDetail() {
   const grid = document.getElementById('detail-photos-grid');
   grid.innerHTML = '';
 
-  if (!part.photos.length) {
-    grid.innerHTML = '<p class="no-photos-msg">No photos yet. Add one below.</p>';
+  const displayPhotos = filterPhotosForPrinter(part.photos, activePrinterFilter);
+
+  if (!displayPhotos.length) {
+    grid.innerHTML = '<p class="no-photos-msg">No photos for this filter yet.</p>';
     return;
   }
 
-  part.photos.forEach(photo => {
+  displayPhotos.forEach(photo => {
     const card = document.createElement('div');
     card.className = 'photo-card';
     card.innerHTML = `
@@ -962,10 +973,14 @@ document.getElementById('modal-lightbox').addEventListener('click', e => {
 //   • photos whose label mentions the active printer
 function filterPhotosForPrinter(photos, printer) {
   if (!printer) return photos;
+  if (printer === 'Parts') {
+    // Only photos explicitly tagged "Part"
+    return photos.filter(p => (p.tags || []).includes('Part'));
+  }
   return photos.filter(p => {
     const tags = p.tags || [];
     if (tags.length === 0) return true;          // untagged = legacy photo, always include
-    if (tags.includes('Part')) return true;      // "Part" tag = show in all exports
+    if (tags.includes('Part')) return true;      // "Part" tag = show in all printer exports
     return tags.includes(printer);               // exact printer tag match
   });
 }
