@@ -941,9 +941,15 @@ function filterPhotosForPrinter(photos, printer) {
   if (!printer) return photos;
   const key = printer.toLowerCase();
   return photos.filter(p => {
-    if (!p.machine_label) return true; // unlabeled = base photo, always include
+    if (!p.machine_label || !p.machine_label.trim()) return true; // no label = base photo
     const label = p.machine_label.toLowerCase();
-    return label.includes(key) || key.includes(label.match(/peri\w*/)?.[0] ?? '\x00');
+    // Label contains the full filter name (e.g. "periq360" in "installed in periq360 bay 2")
+    if (label.includes(key)) return true;
+    // Short label prefix match: "periq" label matches "periq360" filter but NOT "perione"
+    // Extract the first peri-word from the label and check if the filter KEY starts with it
+    const labelWord = label.match(/peri[a-z0-9]*/)?.[0];
+    if (labelWord && key.startsWith(labelWord)) return true;
+    return false;
   });
 }
 
@@ -1063,7 +1069,7 @@ document.getElementById('btn-detail-docx').addEventListener('click', async funct
   const orig = this.textContent;
   this.textContent = 'Building…'; this.disabled = true;
   try {
-    const exportPart = partsForExport([currentPart], activePrinterFilter)[0] ?? currentPart;
+    const exportPart = partsForExport([currentPart], activePrinterFilter)[0] || currentPart;
     const blob = await buildPartDocx(exportPart, quality);
     downloadBlob(blob, `${currentPart.part_number}.docx`);
   } catch (e) {
